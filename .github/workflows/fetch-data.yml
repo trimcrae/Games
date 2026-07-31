@@ -1,0 +1,88 @@
+name: fetch-data
+
+# The dev sandbox has no outbound network, so all third-party data (OpenStreetMap
+# extracts, freely-licensed landmark photos) is fetched here and committed back to
+# the branch. The published site itself never makes a network call.
+
+on:
+  # Editing a fetch script on any branch re-runs the fetch. The job only writes
+  # under data/, which is not in this filter, so its own commit cannot loop.
+  push:
+    paths:
+      - 'tools/fetch-osm.mjs'
+      - 'tools/fetch-photos.mjs'
+      - 'tools/regions.mjs'
+      - 'tools/photos.mjs'
+      - 'tools/pixelize.mjs'
+      - '.github/workflows/fetch-data.yml'
+  workflow_dispatch:
+    inputs:
+      osm:
+        description: Fetch OpenStreetMap extracts
+        type: boolean
+        default: true
+      photos:
+        description: Fetch and pixelize landmark photos
+        type: boolean
+        default: true
+      regions:
+        description: Space-separated region ids (blank = all)
+        type: string
+        default: ''
+      ids:
+        description: Space-separated photo ids (blank = all)
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-data-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Ensure ImageMagick
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.photos }}
+        run: |
+          if ! command -v magick >/dev/null && ! command -v convert >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          fi
+          (magick -version || convert -version) | head -1
+
+      - name: Fetch OpenStreetMap extracts
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.osm }}
+        run: node tools/fetch-osm.mjs ${{ inputs.regions }}
+
+      - name: Fetch landmark photos
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.photos }}
+        run: node tools/fetch-photos.mjs ${{ inputs.ids }}
+
+      - name: Report sizes
+        run: |
+          echo "### Fetched data" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          du -ah data 2>/dev/null | sort -h | tail -40 >> "$GITHUB_STEP_SUMMARY" || echo "no data/" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit results
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A data
+          if git diff --cached --quiet; then
+            echo "No data changes."
+            exit 0
+          fi
+          git commit -m "chore(data): refresh fetched map and photo data"
+          git push origin HEAD:${{ github.ref_name }}
