@@ -60,6 +60,7 @@ notes.push(`${Object.keys(ART).length} hand-drawn panels`);
 // --- levels ----------------------------------------------------------------
 
 const seenPoi = new Set();
+const usedPhotos = new Set();
 let totalPois = 0;
 let photoBacked = 0;
 
@@ -116,7 +117,11 @@ for (const level of LEVELS) {
       if (para.length > 320) fail(`${key} has a ${para.length}-character paragraph; keep them under 320`);
     }
 
-    if (poi.photo) {
+    // Settled decision: a landmark ships with a photograph of itself or it does
+    // not ship. Mixing hand-drawn panels in makes the set look accidental.
+    if (!poi.photo) {
+      fail(`${key} has no photograph; landmarks without one are not shipped`);
+    } else {
       const path = `data/photos/${poi.photo}.json`;
       if (!existsSync(resolve(ROOT, path))) {
         fail(`${key} points at missing photo ${path}`);
@@ -129,9 +134,9 @@ for (const level of LEVELS) {
         const a = decodeArt(doc2.pal ? { w: doc2.w, h: doc2.h, pal: doc2.pal, bits8: doc2.bits8 } : doc2);
         if (a.px.length !== doc2.w * doc2.h) fail(`${key} photo decoded to the wrong size`);
         photoBacked++;
+        if (usedPhotos.has(poi.photo)) fail(`${key} reuses the photo "${poi.photo}"; each landmark needs its own`);
+        usedPhotos.add(poi.photo);
       }
-    } else if (!ART[poi.art]) {
-      fail(`${key} has neither a photo nor a known drawing (art: ${poi.art})`);
     }
   }
 

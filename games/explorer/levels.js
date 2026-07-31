@@ -56,7 +56,7 @@ export const LEVELS = [
         id: 'the-oval',
         name: 'THE OVAL',
         at: [37.43007, -122.1694],
-        photo: 'main-quad',
+        photo: 'stanford-oval',
         art: 'oval',
         text: [
           'A ring of lawn at the head of Palm Drive, the long approach lined with Canary Island palms.',
@@ -97,6 +97,17 @@ export const LEVELS = [
         ],
       },
       {
+        id: 'huang',
+        name: 'HUANG CENTER',
+        at: [37.42799, -122.1743],
+        photo: 'engineering-quad',
+        art: 'tower',
+        text: [
+          'The Jen-Hsun Huang Engineering Center, opened in 2010, the anchor of the Science and Engineering Quad.',
+          'It is the newest of the university\'s quads, built a century after the first one and deliberately echoing its arcades.',
+        ],
+      },
+      {
         id: 'stadium',
         name: 'STANFORD STADIUM',
         at: [37.43392, -122.16188],
@@ -122,24 +133,25 @@ export const LEVELS = [
     walkSpeed: 54,
     pois: [
       {
-        id: 'sentinel',
-        name: 'THE SENTINEL',
+        id: 'quarter-mile',
+        name: 'THE QUARTER MILE',
         at: [43.084629, -77.67436],
-        art: 'sentinel',
+        photo: 'rit-quarter-mile',
+        art: 'quad',
         text: [
-          'Albert Paley\'s steel sculpture, raised in 2003 outside the Student Alumni Union.',
-          'Seventy feet of curling weathered steel, welded in Rochester. Paley kept a studio in the city for decades.',
+          'The brick spine of the campus, running about a quarter of a mile end to end. Everything else hangs off it.',
+          'Albert Paley\'s Sentinel, seventy feet of curling weathered steel, stands at its northern end, raised in 2003.',
         ],
       },
       {
-        id: 'infinity-quad',
-        name: 'INFINITY QUAD',
-        at: [43.08432, -77.67703],
+        id: 'eastman-quad',
+        name: 'EASTMAN QUAD',
+        at: [43.08469, -77.67628],
         photo: 'rit-campus',
         art: 'quad',
         text: [
-          'One of the open brick quads at the centre of campus, named for the Infinity sculpture standing in it.',
-          'RIT moved here from downtown Rochester in 1968, and the whole campus was built at once - which is why every wall is the same brick.',
+          'One of the open brick quads at the centre of campus, named with George Eastman Hall beside it.',
+          'RIT moved here from downtown Rochester in 1968 and the whole campus went up at once, which is why every wall is the same brick.',
         ],
       },
       {
@@ -168,28 +180,40 @@ export const LEVELS = [
         id: 'polisseni',
         name: 'POLISSENI CENTER',
         at: [43.08255, -77.67474],
-        photo: 'rit-polisseni',
+        photo: 'rit-polisseni-ext',
         art: 'arena',
         text: [
           'The hockey arena, opened in 2014, seating a little over four thousand.',
-          'Both the men\'s and women\'s teams play here. The corner student section is loud enough to be a nuisance to visitors.',
+          'Both the men\'s and women\'s teams play here, and the corner student section is loud enough to be a nuisance to visitors.',
         ],
       },
       {
         id: 'golisano',
         name: 'GOLISANO HALL',
         at: [43.08425, -77.67983],
-        photo: 'rit-global-village',
+        photo: 'rit-golisano',
         art: 'tower',
         text: [
-          'Home of the Golisano College of Computing and Information Sciences, named for a 2001 gift from B. Thomas Golisano.',
-          'Labs here run everything from games to cybersecurity - RIT teams have won the national collegiate cyber defense title more than once.',
+          'Home of the Golisano College of Computing and Information Sciences, named for a gift from B. Thomas Golisano in 2001.',
+          'Labs here run everything from games to cybersecurity; RIT teams have taken the national collegiate cyber defence title more than once.',
+        ],
+      },
+      {
+        id: 'ntid',
+        name: 'N T I D',
+        at: [43.08706, -77.66846],
+        photo: 'rit-ntid',
+        art: 'tower',
+        text: [
+          'The National Technical Institute for the Deaf, established by Congress in 1965 with RIT chosen to host it.',
+          'It is one of RIT\'s colleges, and it is why this campus has one of the largest deaf and hard-of-hearing student populations anywhere.',
         ],
       },
       {
         id: 'tiger',
         name: 'TIGER STATUE',
         at: [43.084208, -77.675591],
+        photo: 'rit-tiger',
         art: 'tiger',
         text: [
           'The bronze tiger on the quarter mile, RIT\'s mascot since the 1950s.',
@@ -221,17 +245,6 @@ export const LEVELS = [
     walkSpeed: 62,
     pois: [
       {
-        id: 'braddock-bay',
-        name: 'BRADDOCK BAY',
-        at: [43.31341, -77.71329],
-        photo: 'braddock-bay',
-        art: 'bay',
-        text: [
-          'A shallow bay off Lake Ontario, cut off from it by a barrier beach.',
-          'Every spring, hawks and eagles funnel along the shoreline rather than cross the open lake, and the counts here run into the tens of thousands.',
-        ],
-      },
-      {
         id: 'greece-ridge',
         name: 'GREECE RIDGE',
         at: [43.20565, -77.69238],
@@ -239,7 +252,7 @@ export const LEVELS = [
         art: 'mall',
         text: [
           'The Mall at Greece Ridge, one of the largest shopping centres in New York State.',
-          'It exists because two rival malls sat across the road from each other; in the 1990s they were joined into a single mile-long building.',
+          'It exists because two rival malls sat across the road from one another; in the 1990s they were joined into a single mile-long building.',
         ],
       },
       {
@@ -249,58 +262,30 @@ export const LEVELS = [
         photo: 'long-pond',
         art: 'pond',
         text: [
-          'One of a chain of ponds strung along the lake shore, held back from Lake Ontario by sand bars.',
-          'They are drowned creek mouths - the lake rose after the glaciers left and flooded the valleys.',
+          'One of a chain of ponds strung along the lake shore, held back from Lake Ontario by bars of sand.',
+          'They are drowned creek mouths: the lake rose after the glaciers left and flooded the valleys behind the beach.',
         ],
       },
       {
-        id: 'canal-park',
-        name: 'GREECE CANAL PARK',
-        at: [43.19853, -77.74362],
-        art: 'canal',
+        id: 'beatty-point',
+        name: 'BEATTY POINT',
+        at: [43.27541, -77.68562],
+        photo: 'braddock-bay',
+        art: 'bay',
         text: [
-          'A town park in the far south of Greece, on the Erie Canal.',
-          'The towpath alongside is now a trail; the canal here has been carrying boats since the 1820s.',
+          'A low point of land reaching into Long Pond, at the north end of the town.',
+          'This is the stretch of shoreline that raptors follow every spring rather than cross the open lake, and the counts run into the tens of thousands.',
         ],
       },
       {
         id: 'town-hall',
         name: 'GREECE TOWN HALL',
         at: [43.25846, -77.69793],
+        photo: 'greece-town-hall',
         art: 'townhall',
         text: [
           'The seat of the Town of Greece, a suburb of about a hundred thousand people on Rochester\'s north-west edge.',
           'The town took its name in 1822, during the Greek war of independence, when classical names were in fashion here.',
-        ],
-      },
-      {
-        id: 'historical-society',
-        name: 'HISTORICAL SOCIETY',
-        at: [43.25975, -77.69722],
-        art: 'museum',
-        text: [
-          'The Greece Historical Society museum, next to the town hall campus.',
-          'Its rooms cover the orchards and canal trade that came before the subdivisions, and the lake resorts that once lined the shore.',
-        ],
-      },
-      {
-        id: 'schallers',
-        name: 'SCHALLER\'S',
-        at: [43.27863, -77.65239],
-        art: 'diner',
-        text: [
-          'A drive-in on Edgemere Drive, near the lake, serving Rochester\'s own plate of hots, burgers and fries.',
-          'Places like this are why the stretch by the water empties out in winter and fills again the week it warms up.',
-        ],
-      },
-      {
-        id: 'athena',
-        name: 'GREECE ATHENA',
-        at: [43.24414, -77.69314],
-        art: 'school',
-        text: [
-          'One of the town\'s high schools. Greece names its schools for classical places: Athena, Arcadia, Olympia, Odyssey.',
-          'The district is among the largest in the county - a legacy of the post-war building boom that turned farmland into streets.',
         ],
       },
     ],
