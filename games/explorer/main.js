@@ -47,9 +47,10 @@ const BIKE_BRAKE = 780; // px/s^2, B held
 
 /**
  * The most any one collision test may advance. Tiles are 8px and the feet box
- * is 8px across, so a smaller step than this cannot skip past a solid tile:
- * consecutive tests always overlap. At 3x walking pace a frame's movement is
- * bigger than that, so movement is split into substeps.
+ * is 7px across (see WorldScene.blocked), so consecutive tests three pixels
+ * apart still overlap and no solid tile can fall between two of them. A frame
+ * at three times walking pace covers more ground than that, so a move is split
+ * into substeps of at most this size rather than tested once.
  */
 const MAX_STEP = 3;
 
@@ -386,15 +387,22 @@ export class WorldScene {
   }
 
   /**
-   * Feet-box collision: the player's shoes, not the whole sprite. Four corners
-   * is exact here rather than approximate - the box is 8px wide and 6px tall
-   * against 8px tiles, so it can only ever touch a 2x2 block of tiles and the
-   * corners sample every one of them.
+   * Feet-box collision: the player's shoes, not the whole sprite.
+   *
+   * The box is seven pixels square, which is the largest that still *fits*
+   * inside one eight-pixel tile. It used to be nine wide, and that one pixel
+   * mattered enormously: a nine-pixel box always straddles two tile columns, so
+   * every path exactly one tile across - which on a 6 m/tile campus is most of
+   * them - was impassable, and Stanford's start point resolved into a courtyard
+   * with no way out of it.
+   *
+   * Four corners is exact here rather than approximate: a seven-pixel box can
+   * only ever touch a 2x2 block of tiles, and the corners sample every one.
    */
   blocked(x, y) {
     const half = 3;
-    const top = y - 3;
-    const bottom = y + 3;
+    const top = y - half;
+    const bottom = y + half;
     for (const [cx, cy] of [
       [x - half, top],
       [x + half, top],

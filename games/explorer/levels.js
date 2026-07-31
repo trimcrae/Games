@@ -16,7 +16,11 @@ export const LEVELS = [
     metersPerTile: 6,
     buildingSlot: SLOT.WALL,
     bbox: [37.4235, -122.1775, 37.4375, -122.1595],
-    start: [37.42832, -122.16968],
+    // On Lasuen Mall between Hoover Tower and the Main Quad. This has to be
+    // walkable ground in its own right: a start point inside a building gets
+    // nudged to whatever tile happens to be nearest, which on this campus was a
+    // courtyard the player could never walk out of.
+    start: [37.42847, -122.16986],
     walkSpeed: 54,
     // Stanford runs on bicycles: racks outside every door, and a roundabout on
     // Escondido Mall built purely so that bikes stop colliding with each other.
@@ -25,9 +29,9 @@ export const LEVELS = [
       { id: 'lasuen', name: 'LASUEN MALL RACKS', at: [37.42844, -122.16976] },
       { id: 'bike-circle', name: 'THE BIKE CIRCLE', at: [37.426123, -122.169057] },
       { id: 'green-library', name: 'GREEN LIBRARY RACKS', at: [37.42703, -122.16813] },
-      { id: 'white-plaza', name: 'WHITE PLAZA RACKS', at: [37.42491, -122.17003] },
+      { id: 'white-plaza', name: 'WHITE PLAZA RACKS', at: [37.42494, -122.17006] },
       { id: 'eng-quad', name: 'ENGINEERING RACKS', at: [37.42795, -122.1741] },
-      { id: 'oval', name: 'OVAL RACKS', at: [37.43012, -122.16921] },
+      { id: 'oval', name: 'OVAL RACKS', at: [37.43015, -122.16925] },
     ],
     pois: [
       {
@@ -54,8 +58,11 @@ export const LEVELS = [
       },
       {
         id: 'main-quad',
+        // The quad's court is inside the building footprint, which is solid
+        // ground in the tilemap, so the post stands on the west arcade where
+        // the paths run - the side you actually walk in from.
         name: 'THE MAIN QUAD',
-        at: [37.42714, -122.17037],
+        at: [37.42705, -122.17067],
         photo: 'main-quad',
         art: 'quad',
         text: [
@@ -120,8 +127,11 @@ export const LEVELS = [
       },
       {
         id: 'stadium',
+        // The bowl is ringed by its own concourse and fences, which enclose a
+        // pocket of ground with no way in; the post stands on the west
+        // approach off Galvez Street, where you would walk up to it.
         name: 'STANFORD STADIUM',
-        at: [37.43392, -122.16188],
+        at: [37.43357, -122.16239],
         photo: 'stanford-stadium',
         art: 'stadium',
         text: [
@@ -146,7 +156,7 @@ export const LEVELS = [
     // saves you something: the ends of the quarter mile, and the campus bike
     // path out to the east side.
     racks: [
-      { id: 'quarter-mile', name: 'QUARTER MILE RACKS', at: [43.08435, -77.67696] },
+      { id: 'quarter-mile', name: 'QUARTER MILE RACKS', at: [43.08438, -77.677] },
       { id: 'global-village', name: 'GLOBAL VILLAGE RACKS', at: [43.08283, -77.68073] },
       { id: 'winding-way', name: 'WINDING WAY PATH', at: [43.084337, -77.670552] },
     ],
@@ -269,7 +279,7 @@ export const LEVELS = [
     racks: [
       { id: 'town-hall', name: 'TOWN HALL RACK', at: [43.25828, -77.69863] },
       { id: 'greece-ridge', name: 'GREECE RIDGE RACK', at: [43.20532, -77.69211] },
-      { id: 'long-pond', name: 'LONG POND RACK', at: [43.28628, -77.69093] },
+      { id: 'long-pond', name: 'LONG POND RACK', at: [43.28634, -77.691] },
       { id: 'canal-towpath', name: 'CANAL TOWPATH', at: [43.196025, -77.732162] },
     ],
     pois: [
@@ -344,8 +354,10 @@ export const TRAVEL_HUBS = {
       art: 'airportHub',
       name: 'GALVEZ COACH STOP',
       at: [37.43381, -122.16344],
-      blurb:
-        'The coach kerb on Galvez Street, below Stanford Stadium. Airport runs leave from here: south down 101 to San Jose, or north up the peninsula to San Francisco.',
+      // Blurbs are drawn four wrapped lines deep by DepartureScene, and at the
+      // console's smallest resolution a line is 24 characters. Anything longer
+      // than this is written and then thrown away unread.
+      blurb: 'The coach kerb on Galvez Street, below the stadium. Airport runs go to SJC and SFO.',
       routes: [
         {
           to: 'rit',
@@ -372,8 +384,7 @@ export const TRAVEL_HUBS = {
       art: 'airportHub',
       name: 'RIT TRANSIT PLAZA',
       at: [43.08343, -77.67512],
-      blurb:
-        'The bus loop below the Student Alumni Union, where the airport shuttle waits at the start and end of every term. ROC is fifteen minutes north up 390.',
+      blurb: 'The bus loop below the Student Alumni Union. ROC is fifteen minutes up 390.',
       routes: [
         {
           to: 'stanford',
@@ -390,8 +401,7 @@ export const TRAVEL_HUBS = {
       art: 'highwayHub',
       name: 'LOMB MEMORIAL DR',
       at: [43.08826, -77.67431],
-      blurb:
-        'The north gate of campus. Lomb Memorial Drive runs out to Jefferson Road, NY-252, and from there it is one junction east to I-390.',
+      blurb: 'The north gate of campus. Lomb Memorial Drive runs out to NY-252 and I-390.',
       routes: [
         {
           to: 'greece',
@@ -412,8 +422,7 @@ export const TRAVEL_HUBS = {
       art: 'highwayHub',
       name: 'RIDGE RD INTERCHANGE',
       at: [43.2037, -77.67672],
-      blurb:
-        'Where 390 crosses Ridge Road, NY-104, at the south-east corner of the town. Southbound it runs down the west side of Rochester to Henrietta.',
+      blurb: 'Where I-390 crosses Ridge Road, NY-104. Southbound it runs to Henrietta.',
       routes: [
         {
           to: 'rit',
@@ -431,8 +440,7 @@ export const TRAVEL_HUBS = {
       art: 'airportHub',
       name: 'TOWN HALL PARK+RIDE',
       at: [43.25904, -77.69863],
-      blurb:
-        'The lot on Vince Tofany Boulevard, beside the town hall. Leave the car here and the airport coach takes you the eight miles south to ROC.',
+      blurb: 'The park and ride by the town hall. The airport coach runs south to ROC.',
       routes: [
         {
           to: 'stanford',
