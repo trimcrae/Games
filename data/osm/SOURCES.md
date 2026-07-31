@@ -10,6 +10,6 @@ Regenerate with the `fetch-osm` workflow, or locally with
 
 | Region | Name | bbox (S,W,N,E) | Fetched | Features |
 | --- | --- | --- | --- | --- |
-| `stanford` | Stanford University | 37.42, -122.18, 37.437, -122.159 | 2026-07-31 | 3332 |
+| `stanford` | Stanford University | 37.42, -122.18, 37.437, -122.159 | 2026-07-31 | 3443 |
 | `rit` | Rochester Institute of Technology | 43.077, -77.691, 43.0925, -77.668 | 2026-07-31 | 1781 |
-| `greece` | Greece, New York | 43.19, -77.75, 43.32, -77.64 | 2026-07-31 | 3107 |
+| `greece` | Greece, New York | 43.19, -77.75, 43.32, -77.64 | 2026-07-31 | 3095 |
