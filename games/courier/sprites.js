@@ -29,13 +29,16 @@ function opSprite(ops, w, h) {
 }
 
 /**
- * Where you collect. A taped parcel standing on the pavement, 12x14 with the
- * feet on the bottom row so it shares an anchor with DROP below - the two
- * markers swap over mid-job and must not appear to jump.
+ * Where you collect: a taped parcel on a short post.
+ *
+ * Both markers are 12x16 with their foot on the bottom row, so the one swaps
+ * for the other mid-job without appearing to jump. They are on posts for the
+ * same reason the Explorer's landmark signs are: these maps are drawn in a
+ * shallow three-quarter view and anything lying flat on the ground disappears
+ * into a sandstone roof. A vertical stroke is what makes a marker findable.
  */
 export const PICKUP = sprite([
   '............',
-  '............',
   '..33333333..',
   '..30022003..',
   '..30022003..',
@@ -45,20 +48,25 @@ export const PICKUP = sprite([
   '..30022003..',
   '..30022003..',
   '..33333333..',
-  '...3....3...',
-  '............',
+  '.....33.....',
+  '.....33.....',
+  '.....33.....',
+  '....3333....',
+  '...333333...',
   '............',
 ]);
 
 /** Where it goes. A flag, which reads as a destination rather than as cargo. */
 export const DROP = sprite([
-  '..3333333...',
+  '..33333333..',
   '..30000003..',
   '..300000003.',
   '..3000000003',
   '..300000003.',
   '..30000003..',
-  '..3333333...',
+  '..33333333..',
+  '..33........',
+  '..33........',
   '..33........',
   '..33........',
   '..33........',
@@ -90,7 +98,7 @@ export const PARCEL_PIP = sprite([
 // instead of shimmering as the player turns.
 
 const HEADINGS = 16;
-const ARROW_W = 11;
+const ARROW_W = 13;
 
 /** One arrow head pointing along `angle` (screen radians, y down). */
 function arrowOps(angle) {
@@ -99,12 +107,15 @@ function arrowOps(angle) {
     Math.round(c + Math.cos(angle + spread) * d),
     Math.round(c + Math.sin(angle + spread) * d),
   ];
-  // The halo is the same dart grown by a pixel; drawing it first and the dark
-  // head over it gives a 1px outline without hand-cutting sixteen of them.
   const dart = (r) => [at(0, r), at(2.45, r * 0.92), at(Math.PI, r * 0.3), at(-2.45, r * 0.92)];
+  // A dark disc under a bright dart. The first version was a pale outline
+  // around a dark head, and over a tan sandstone roof - which is most of
+  // Stanford - it vanished completely. A badge cannot be subtle: it is the
+  // only thing telling the player which way to go.
   return [
-    ['p', dart(c), 0],
-    ['p', dart(c - 1.4), 3],
+    ['e', c, c, c, c, 3],
+    ['p', dart(c - 0.6), 3],
+    ['p', dart(c - 2), 1],
   ];
 }
 
@@ -146,47 +157,59 @@ export const ICON_ART = {
   bg: 0,
   ops: [
     ['r', 0, 0, 64, 48, 0],
-    ['d', 0, 0, 64, 24, 0, 1, 1], // haze, so the rider is not floating on paper
-    // road
+    ['d', 0, 2, 64, 22, 0, 1, 1], // haze, so the rider is not floating on paper
+    // the road, with the kerb line and lane dashes under the wheels
     ['r', 0, 40, 64, 8, 2],
     ['l', 0, 40, 63, 40, 3],
-    ['g', 3, 44, 5, 1, 14, 0, 8, 1, 0],
-    // speed lines
-    ['l', 1, 16, 11, 16, 2],
-    ['l', 3, 22, 15, 22, 2],
-    ['l', 0, 28, 9, 28, 2],
-    // wheels
-    ['E', 17, 34, 7, 7, 3],
-    ['E', 47, 34, 7, 7, 3],
-    ['E', 17, 34, 3, 3, 2],
-    ['E', 47, 34, 3, 3, 2],
-    // frame, fork and bars
-    ['l', 17, 34, 32, 35, 3],
-    ['l', 32, 35, 27, 22, 3],
-    ['l', 32, 35, 41, 24, 3],
-    ['l', 27, 22, 41, 24, 3],
-    ['l', 47, 34, 44, 21, 3],
-    ['l', 41, 22, 50, 19, 3],
-    ['r', 24, 20, 7, 2, 3], // saddle
-    // parcel on the rack, over the back wheel
-    ['r', 13, 20, 12, 10, 0],
-    ['o', 13, 20, 12, 10, 3],
-    ['l', 19, 20, 19, 29, 2],
-    ['l', 13, 25, 24, 25, 2],
-    // rider, leaning on the bars
-    ['p', [[26, 22], [31, 9], [38, 11], [35, 24]], 1],
-    ['l', 26, 22, 31, 9, 3],
-    ['l', 38, 11, 35, 24, 3],
-    ['l', 31, 9, 38, 11, 3],
-    ['l', 37, 12, 49, 19, 3],
-    ['l', 38, 13, 50, 20, 3],
-    ['e', 43, 8, 4, 4, 3],
-    ['r', 41, 6, 5, 3, 0],
-    ['r', 43, 7, 1, 1, 3],
-    ['l', 29, 23, 35, 30, 2],
-    ['l', 30, 23, 36, 30, 2],
-    ['l', 35, 30, 32, 35, 2],
-    ['l', 36, 30, 33, 35, 2],
-    ['o', 4, 4, 56, 40, 3],
+    ['g', 2, 44, 5, 1, 14, 0, 8, 1, 0],
+    // speed lines coming off the back of the rider
+    ['l', 0, 14, 9, 14, 2],
+    ['l', 2, 21, 13, 21, 2],
+    ['l', 0, 28, 7, 28, 2],
+    // wheels, resting on the kerb line
+    ['E', 16, 34, 6, 6, 3],
+    ['E', 46, 34, 6, 6, 3],
+    ['E', 16, 34, 2, 2, 2],
+    ['E', 46, 34, 2, 2, 2],
+    // frame: chainstay, seat tube, down tube, top tube, fork, bars
+    ['l', 16, 34, 30, 35, 3],
+    ['l', 17, 33, 30, 34, 3],
+    ['l', 30, 35, 26, 23, 3],
+    ['l', 31, 35, 27, 23, 3],
+    ['l', 30, 35, 41, 25, 3],
+    ['l', 31, 35, 42, 25, 3],
+    ['l', 26, 23, 41, 25, 3],
+    ['l', 46, 34, 43, 23, 3],
+    ['l', 47, 34, 44, 23, 3],
+    ['l', 42, 22, 50, 19, 3],
+    ['r', 22, 21, 8, 2, 3], // saddle
+    // rider, up out of the saddle and leaning on the bars
+    ['p', [[25, 23], [30, 11], [36, 13], [33, 24]], 1],
+    ['l', 25, 23, 30, 11, 3],
+    ['l', 36, 13, 33, 24, 3],
+    ['l', 30, 11, 36, 13, 3],
+    ['l', 33, 24, 25, 23, 3],
+    ['l', 35, 14, 48, 20, 3], // arm to the grips
+    ['l', 35, 15, 48, 21, 3],
+    ['l', 35, 12, 38, 11, 3], // neck
+    ['e', 40, 10, 3, 3, 3], // head
+    ['r', 41, 10, 2, 2, 0], // cheek, which is what turns the blob into a face
+    ['l', 43, 8, 45, 9, 3], // the peak of a cap, jutting into the wind
+    // The near leg is drawn in the jersey's own shade rather than in ink: the
+    // frame behind it is solid black, and a black leg over a black frame is no
+    // leg at all.
+    ['l', 28, 24, 33, 30, 1],
+    ['l', 29, 24, 34, 30, 1],
+    ['l', 33, 30, 30, 35, 1],
+    ['l', 34, 30, 31, 35, 1],
+    ['r', 29, 34, 4, 2, 3], // shoe on the pedal
+    // The parcel on the rack: the one light shape in a dark silhouette, so it
+    // is the first thing read at any scale. One tape band and a flap seam
+    // rather than a full cross - a cross of 1px lines reads as a window.
+    ['r', 10, 18, 14, 11, 0],
+    ['o', 10, 18, 14, 11, 3],
+    ['r', 15, 18, 3, 11, 2],
+    ['l', 10, 21, 23, 21, 2],
+    ['r', 11, 24, 3, 3, 1],
   ],
 };

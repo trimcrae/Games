@@ -44,9 +44,14 @@ export function layoutFor(w, h) {
     lampY: rockY - towerH,
     spawnR,
     rockRho: rockR / spawnR,
+    // How far the lamp stands above the point ships steer for, in rho.
+    lampRho: towerH / spawnR,
+    // The lamp should not reach past the top of the screen: see beamReach.
+    // Measured from the lamp, which is a tower's height up from the reef.
+    reachCap: clamp((field - towerH + 10) / spawnR, 0.42, 0.92),
     // Hulls are authored at a 190px reference radius and scale with the screen,
     // so a sloop stays a readable speck rather than a single pixel.
-    shipScale: clamp(spawnR / 190, 0.72, 1.7),
+    shipScale: clamp(spawnR / 190, 0.85, 1.7),
     swell: makeSwell(w, h),
   };
 }
@@ -54,7 +59,7 @@ export function layoutFor(w, h) {
 /** Fixed sea texture: short dashes that drift and wrap. Seeded, never random. */
 function makeSwell(w, h) {
   const rand = rng(0x5ea1 ^ (w * 31 + h));
-  const count = Math.round((w * h) / 1100);
+  const count = Math.round((w * h) / 1700);
   const out = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     out[i * 3] = rand() * w;
@@ -99,9 +104,12 @@ export function drawSea(screen, L, lamp) {
 
   // Fog closes the sea in around the tower; on a clear night the pool of light
   // reaches most of the way out.
+  // Squared throughout: this loop runs over every pixel of the playfield sixty
+  // times a second on a phone, and a square root per pixel is not free.
   const visR = L.spawnR * (1 - 0.6 * fog);
-  const b1 = visR * 0.4;
-  const b2 = visR * 0.86;
+  const b1 = (visR * 0.4) ** 2;
+  const b2 = (visR * 0.86) ** 2;
+  const visR2 = visR * visR;
   const inv = 1 / Math.max(1, b2 - b1);
 
   const water0 = px(SLOT.DEEP, 2);
@@ -135,10 +143,10 @@ export function drawSea(screen, L, lamp) {
       }
 
       if (!byte) {
-        const r = Math.hypot(dx, dy);
-        if (r < b1) byte = water0;
-        else if (r < b2) byte = (r - b1) * inv > dither ? water1 : water0;
-        else if (r < visR) byte = water1;
+        const r2 = dx * dx + dy * dy;
+        if (r2 < b1) byte = water0;
+        else if (r2 < b2) byte = (r2 - b1) * inv > dither ? water1 : water0;
+        else if (r2 < visR2) byte = water1;
         else byte = water2;
       }
       buf[row + x] = byte;
@@ -154,8 +162,11 @@ export function drawSwell(screen, L, lamp, time) {
   const tanHalf = Math.tan(lamp.half);
   const reachPx = lamp.reach * L.spawnR;
   const visR = L.spawnR * (1 - 0.6 * lamp.fog);
-  const dark = px(SLOT.DEEP, 1);
-  const bright = px(SLOT.GOLD, 0);
+  // Troughs, not crests: the swell is drawn darker than the water it sits on,
+  // so a hull - which is always lighter than the sea - can never be mistaken
+  // for sea texture on the monochrome looks.
+  const dark = px(SLOT.DEEP, 3);
+  const bright = px(SLOT.GOLD, 1);
   const fieldH = L.h - L.hud;
 
   for (let i = 0; i < s.length; i += 3) {
@@ -174,21 +185,28 @@ export function drawSwell(screen, L, lamp, time) {
 export function drawRocks(screen, L, world, time) {
   const rock = px(SLOT.CONCRETE, 3);
   const face = px(SLOT.CONCRETE, 2);
+  const crown = px(SLOT.CONCRETE, 1);
   const surf = px(SLOT.UI, 0);
   const r = L.rockR;
 
+  let prevHalf = 0;
   for (let y = -r; y <= 2; y++) {
     const yy = L.rockY + y;
-    if (yy < L.hud || yy >= L.h) continue;
     const t = 1 - (y * y) / (r * r);
     if (t <= 0) continue;
     const halfW = Math.round(r * 1.25 * Math.sqrt(t));
-    screen.fill(L.cx - halfW, yy, halfW * 2 + 1, 1, rock);
-    // A lit face on the lamp side of every ledge, so the reef has a shape.
-    if (y > -r + 2) {
+    if (yy >= L.hud && yy < L.h) {
+      screen.fill(L.cx - halfW, yy, halfW * 2 + 1, 1, rock);
+      // The lamp is directly above, so the reef's upper edges are lit: without
+      // that rim the rock is the same shade as fogged water on the mono looks.
+      if (halfW > prevHalf) {
+        screen.fill(L.cx - halfW, yy, Math.max(2, halfW - prevHalf), 1, crown);
+        screen.fill(L.cx + prevHalf, yy, Math.max(2, halfW - prevHalf), 1, crown);
+      }
       screen.set(L.cx - halfW + 1, yy, face);
       screen.set(L.cx + halfW - 1, yy, face);
     }
+    prevHalf = halfW;
   }
   // Broken water around the rocks, moving with the swell.
   for (let i = 0; i < 14; i++) {
@@ -226,10 +244,11 @@ export function drawTower(screen, L, world, time) {
   const mid = px(SLOT.UI, 2);
   const lamp = px(SLOT.GOLD, 0);
   const top = L.lampY;
-  const baseW = Math.max(7, Math.round(L.towerH * 0.42) | 1);
+  const baseW = Math.max(7, Math.round(L.towerH * 0.34) | 1);
   const topW = Math.max(5, baseW - 2);
 
-  for (let y = top; y <= L.rockY; y++) {
+  // Shaft, starting below the gallery.
+  for (let y = top + 3; y <= L.rockY; y++) {
     const k = (y - top) / Math.max(1, L.rockY - top);
     const half = Math.round((topW + (baseW - topW) * k) / 2);
     if (y < L.hud) continue;
@@ -240,16 +259,20 @@ export function drawTower(screen, L, world, time) {
     screen.set(L.cx + half, y, dark);
   }
 
-  // Gallery and lamp room.
+  // Lamp room, centred on the point the beam actually leaves from, with its
+  // gallery under it and a cap and finial over it.
   const gw = topW + 2;
-  screen.fill(L.cx - (gw >> 1) - 1, top - 1, gw + 3, 2, dark);
-  screen.fill(L.cx - (gw >> 1), top - 5, gw + 1, 4, lamp);
-  screen.frame(L.cx - (gw >> 1) - 1, top - 6, gw + 3, 6, dark);
-  screen.fill(L.cx - 1, top - 8, 3, 2, dark);
+  const gx = L.cx - (gw >> 1);
+  screen.fill(gx - 1, top + 2, gw + 3, 1, dark);
+  screen.fill(gx, top - 2, gw + 1, 4, lamp);
+  screen.frame(gx - 1, top - 3, gw + 3, 6, dark);
+  screen.fill(gx - 1, top - 4, gw + 3, 1, dark);
+  screen.set(L.cx, top - 6, dark);
+  screen.set(L.cx, top - 5, dark);
 
   // Halo, breathing slightly, brighter while the horn is answering.
   const pulse = 2 + Math.sin(time * 2.3) + (world.hornFlash > 0 ? 2 : 0);
-  ring(screen, L.cx, top - 3, Math.round(3 + pulse), px(SLOT.GOLD, 0), L.hud);
+  ring(screen, L.cx, top, Math.round(4 + pulse), px(SLOT.GOLD, 0), L.hud);
 }
 
 function ring(screen, cx, cy, r, byte, minY) {
@@ -296,6 +319,17 @@ export function drawShip(screen, L, ship, opts = {}) {
   blob(screen, x, y, hx, hy, len + 2, wid + 2, px(SLOT.NIGHT, 3), L.hud);
   blob(screen, x, y, hx, hy, len, wid, hull, L.hud);
   if (echoing) diamond(screen, x, y, Math.round(5 + 3 * ship.echo), px(SLOT.UI, 0), L.hud);
+
+  // A wake astern: two broken dashes that say which way the hull is pointing
+  // even when it is four pixels long.
+  for (const k of [0.75, 1.05]) {
+    const wx = x - hx * len * k;
+    const wy = y - hy * len * k;
+    for (const s of [-1, 1]) {
+      const py = Math.round(wy + hx * s);
+      if (py >= L.hud) screen.set(Math.round(wx - hy * s), py, px(SLOT.UI, 2));
+    }
+  }
 
   // Superstructure aft, and a bow lantern, both in shade rather than colour.
   const sx = x - hx * len * 0.18;

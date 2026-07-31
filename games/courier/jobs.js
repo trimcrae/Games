@@ -35,16 +35,24 @@ export function rankFor(delivered) {
 export const isPromotion = (delivered) => RANKS.some((r) => r.at === delivered && r.at > 0);
 
 // How fast the dispatcher assumes you travel, as a multiple of the level's own
-// walking speed. Top speed on the bike on tarmac is 2.9x, so 1.7x is the
-// allowance for junctions, kerbs, spinning up from a standing start and going
-// the wrong way round a building once.
-const ASSUMED_PACE = 1.7;
+// walking speed. Top speed on the bike on tarmac is 2.9x, and the route length
+// comes off a four-connected flood that cannot count a diagonal, so it already
+// overstates the distance by up to two fifths; 2.2x is what is left over for
+// junctions, kerbs, spinning up from a standing start, and going the wrong way
+// round a building once.
+//
+// These three numbers are the difficulty. They were set by running a bot that
+// steers downhill on a flood field from the target - a worse rider than a
+// person, since it re-aims from tile centres and never cuts a corner - and
+// tuning until it ran out of time somewhere between six and nineteen
+// deliveries on the three maps. Loosen them and the shift never ends.
+const ASSUMED_PACE = 2.2;
 
 /** Seconds added on top of every allowance, so a very short hop is not a trap. */
 const BASE_SECONDS = 5;
 
 /** The clock tightens as the shift goes on; this is as tight as it gets. */
-const MIN_TIGHTNESS = 0.6;
+const MIN_TIGHTNESS = 0.55;
 
 /** Distance bands for a job, in tile steps, widened until something fits. */
 const PICKUP_BAND = [5, 90];
@@ -147,7 +155,7 @@ export class Dispatcher {
     this.remember(to.depot);
 
     const routePx = (from.steps + to.steps) * TILE;
-    const tightness = Math.max(MIN_TIGHTNESS, 1 - 0.045 * this.issued);
+    const tightness = Math.max(MIN_TIGHTNESS, 1 - 0.05 * this.issued);
     const allowance = Math.round(((routePx / (this.map.walkSpeed * ASSUMED_PACE)) * tightness + BASE_SECONDS) * 10) / 10;
 
     this.issued++;

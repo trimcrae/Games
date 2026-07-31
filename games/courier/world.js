@@ -139,6 +139,9 @@ export function findDepots(map, features, reach) {
     if (f.kind !== 'building' || !f.name || !f.ring || f.ring.length < 3) continue;
     const name = tidyName(f.name);
     if (!name || name.length > MAX_NAME) continue;
+    // Some footprints are named for their street number and nothing else -
+    // Greece has a "10-20". "TAKE IT TO 10-20" is not an instruction.
+    if (!/[A-Z]{3}/.test(name)) continue;
 
     // Centroid and area by the shoelace formula, in tile space, so the area
     // threshold means the same thing on a 6 m/tile campus and a 12 m/tile town.

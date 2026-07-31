@@ -34,15 +34,39 @@ export const SHIP_TYPES = [
   { id: 'tanker', name: 'TANKER', len: 20, beam: 8, speed: 0.045, toughness: 2.1, score: 200 },
 ];
 
-export const BEAM_LIMIT = 1.63; // radians either side of straight up
+// The lamp stands above the point the ships are steering for, so a hull that
+// comes round the side ends up bearing more than 90 degrees from the lamp long
+// before it strikes. The beam therefore has to swing a little past horizontal,
+// and ships are not allowed to arrive from further round than SPREAD_MAX.
+export const BEAM_LIMIT = 1.95;
+const SPREAD_MAX = 1.32;
 const TURN_SLOW = 1.05; // rad/s from a tap
 const TURN_FAST = 2.65; // rad/s once the d-pad has been held a moment
 const FOCUS_DRAG = 0.42; // a focused lamp is heavier to swing
 
 /** Beam half-angle in radians, wide open (focus 0) to pencil (focus 1). */
 export const beamHalf = (focus) => 0.238 - 0.165 * focus;
-/** How far the beam carries, in rho. Fog eats the wide beam first. */
-export const beamReach = (focus, fog) => (1.16 - 0.44 * fog) * (1 + 0.26 * focus);
+
+/**
+ * How far the beam carries, in rho.
+ *
+ * `cap` is the layout's own limit - roughly the top edge of the screen - and it
+ * matters more than it looks: without it a wide console would let you turn
+ * ships away out in the dark before they had ever been drawn, which is a game
+ * of watching a number rather than watching the sea. Fog pulls the wide beam
+ * in below the cap, and focusing is then the only way to reach back out.
+ */
+export const beamReach = (focus, fog, cap = 0.82) => Math.min(cap, (0.95 - 0.5 * fog) * (1 + 0.22 * focus));
+
+/**
+ * The bearing the lamp has to be pointing at to light this ship, which is not
+ * the ship's own bearing from the rocks - see the note on BEAM_LIMIT.
+ * @param {{lampRho:number}} world
+ * @param {{theta:number, rho:number}} ship
+ */
+export function lampBearing(world, ship) {
+  return Math.atan2(ship.rho * Math.sin(ship.theta), ship.rho * Math.cos(ship.theta) - world.lampRho);
+}
 
 const LIVES = 3;
 const HORN_COST = 1 / 3;
@@ -85,11 +109,23 @@ export class World {
     this.fog = 0;
     this.fogTarget = 0;
     this.shake = 0;
-    this.rockRho = 0.15; // the renderer overwrites this from its layout
+    // All three overwritten by the scene from the current layout.
+    this.rockRho = 0.15;
+    this.reachCap = 0.72;
+    this.lampRho = 0.13;
     this.state = 'intro';
     this.stateT = 0;
     this.nextId = 1;
     this.beginWave(1);
+  }
+
+  /**
+   * Ships are timed, not paced: a console that shows more sea between the
+   * lamp's limit and the reef gets proportionally faster hulls, so the seconds
+   * a player has to react are the same on every screen the shell can pick.
+   */
+  get playScale() {
+    return clamp((this.reachCap + this.lampRho - this.rockRho) / 0.7, 0.7, 1.4);
   }
 
   /** Score multiplier from the current streak of ships turned away. */
@@ -117,14 +153,14 @@ export class World {
 
   beginWave(n) {
     this.wave = n;
-    this.pending = 2 + Math.round(n * 1.35);
+    this.pending = 4 + Math.round(n * 1.5);
     this.spawnTimer = 0.6;
     this.state = 'intro';
     this.stateT = 0;
-    // Two clear nights to learn the lamp on, then the fog starts arriving in
-    // banks: a thick wave, then a thinner one, so it never becomes a constant.
-    const bank = n < 3 ? 0 : 0.16 * (n - 2) + 0.18 * this.rand();
-    this.fogTarget = clamp(n % 4 === 0 ? bank * 0.35 : bank, 0, 0.82);
+    // One clear night to learn the lamp on, then the fog arrives in banks -
+    // every fourth night mostly clears, so thick fog stays an event.
+    const bank = n < 2 ? 0 : 0.2 + 0.12 * (n - 2) + 0.15 * this.rand();
+    this.fogTarget = clamp(n % 4 === 0 ? bank * 0.3 : bank, 0, 0.85);
     this.emit({ type: 'wave', wave: n, fog: this.fogTarget });
   }
 
@@ -134,7 +170,7 @@ export class World {
   }
 
   waveSpread() {
-    return Math.min(1.5, 0.52 + 0.105 * (this.wave - 1));
+    return Math.min(SPREAD_MAX, 0.52 + 0.105 * (this.wave - 1));
   }
 
   pickType() {
@@ -163,9 +199,10 @@ export class World {
       type,
       theta,
       rho: 1,
-      speed: type.speed * this.waveSpeed() * (0.9 + 0.2 * this.rand()),
+      speed: type.speed * this.waveSpeed() * this.playScale * (0.9 + 0.2 * this.rand()),
       drift: (this.rand() * 2 - 1) * 0.055, // a little set and leeway, so aim has to be kept
       charge: 0,
+      dist: 1,
       lit: 0,
       echo: 0,
       stall: 0,
@@ -250,12 +287,12 @@ export class World {
     if (this.spawnTimer > 0) return;
     this.spawn();
     this.pending--;
-    this.spawnTimer = Math.max(0.75, 2.7 - 0.14 * this.wave) * (0.75 + 0.5 * this.rand());
+    this.spawnTimer = Math.max(0.7, 2.4 - 0.14 * this.wave) * (0.75 + 0.5 * this.rand());
   }
 
   updateShips(dt) {
     const half = beamHalf(this.focus);
-    const reach = beamReach(this.focus, this.fog);
+    const reach = beamReach(this.focus, this.fog, this.reachCap);
     const power = 0.86 + 1.05 * this.focus;
 
     for (let i = this.ships.length - 1; i >= 0; i--) {
@@ -263,11 +300,19 @@ export class World {
       s.echo = Math.max(0, s.echo - dt);
       s.stall = Math.max(0, s.stall - dt);
 
-      // Lighting test in beam space. The tolerance is angular slop for the
-      // hull's own width, so a big ship is easier to hold than a small one.
-      const d = Math.abs(((s.theta - this.beam + Math.PI) % (2 * Math.PI)) - Math.PI);
-      const slop = (0.02 * s.type.beam) / Math.max(0.12, s.rho);
-      const inBeam = d <= half + slop && s.rho <= reach;
+      // Lighting test, done from the lamp rather than from the rocks the ship
+      // is aimed at: the two are a tower's height apart, which is worth twenty
+      // degrees of bearing on a hull that is close in and off to one side.
+      const lx = s.rho * Math.sin(s.theta);
+      const ly = s.rho * Math.cos(s.theta) - this.lampRho;
+      const dist = Math.hypot(lx, ly);
+      const bearing = Math.atan2(lx, ly);
+      const d = Math.abs(((bearing - this.beam + Math.PI) % (2 * Math.PI)) - Math.PI);
+      // Angular slop for the hull's own width: a tanker is a wider target than
+      // a sloop, and every hull is a wider target the closer it gets.
+      const slop = s.type.beam / 380 / Math.max(0.06, dist);
+      const inBeam = d <= half + slop && dist <= reach;
+      s.dist = dist;
       s.lit = inBeam ? Math.min(1, s.lit + dt * 8) : Math.max(0, s.lit - dt * 6);
 
       if (s.turning) {
@@ -279,7 +324,7 @@ export class World {
       }
 
       if (inBeam) {
-        s.charge += ((power * (1 - 0.32 * s.rho)) / s.type.toughness) * dt;
+        s.charge += ((power * (1 - 0.32 * dist)) / s.type.toughness) * dt;
         if (s.charge >= 1) {
           this.turnAway(s);
           continue;
@@ -290,7 +335,7 @@ export class World {
 
       if (!s.stall) {
         s.rho -= s.speed * dt;
-        s.theta = clamp(s.theta + s.drift * dt, -1.58, 1.58);
+        s.theta = clamp(s.theta + s.drift * dt, -SPREAD_MAX, SPREAD_MAX);
       }
 
       // The bell: every hull rings, and rings faster the closer it gets. In
