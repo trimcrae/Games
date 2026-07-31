@@ -1,0 +1,91 @@
+name: pages-check
+
+# Proves the published site is actually up and serving a working console.
+# The development sandbox has no outbound network, so this is the only place
+# the claim "it works on your phone" can be tested honestly.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Catches a Pages deployment that silently stopped working.
+    - cron: '17 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-check
+  cancel-in-progress: true
+
+jobs:
+  reachable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Wait for the Pages deployment to catch up
+        run: sleep 60
+
+      - name: Fetch the published site
+        id: fetch
+        run: |
+          set -euo pipefail
+          BASE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Checking $BASE"
+
+          # Pages can lag a push by a minute or two; retry rather than flap.
+          for attempt in 1 2 3 4 5 6; do
+            code=$(curl -sS -o /tmp/index.html -w '%{http_code}' -L "$BASE/" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "index.html served on attempt $attempt"
+              break
+            fi
+            echo "attempt $attempt: HTTP $code"
+            if [ "$attempt" = "6" ]; then
+              echo "::error::$BASE/ never returned 200 (last status $code)"
+              exit 1
+            fi
+            sleep 30
+          done
+
+          grep -q 'type="module"' /tmp/index.html || {
+            echo "::error::index.html served but does not load the module entry point"
+            exit 1
+          }
+
+          # Every asset the console needs before it can draw a frame.
+          for path in main.js engine/shell.css engine/scene.js engine/gfx.js \
+                      games/manifest.js data/osm/stanford.json data/photos/hoover-tower.json; do
+            code=$(curl -sS -o /tmp/asset -w '%{http_code}' -L "$BASE/$path")
+            size=$(wc -c < /tmp/asset)
+            if [ "$code" != "200" ]; then
+              echo "::error::$path returned HTTP $code"
+              exit 1
+            fi
+            echo "  ok  $path  ${size} bytes"
+          done
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Play the published site on a phone-sized viewport
+        env:
+          BASE: ${{ steps.fetch.outputs.base }}
+        run: node tools/live-check.mjs "$BASE"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-screenshots
+          path: samples/live
+          if-no-files-found: ignore
