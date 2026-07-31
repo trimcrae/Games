@@ -18,6 +18,17 @@ export const LEVELS = [
     bbox: [37.4235, -122.1775, 37.4375, -122.1595],
     start: [37.42832, -122.16968],
     walkSpeed: 54,
+    // Stanford runs on bicycles: racks outside every door, and a roundabout on
+    // Escondido Mall built purely so that bikes stop colliding with each other.
+    // The first rack is a few steps from where you spawn.
+    racks: [
+      { id: 'lasuen', name: 'LASUEN MALL RACKS', at: [37.42844, -122.16976] },
+      { id: 'bike-circle', name: 'THE BIKE CIRCLE', at: [37.426123, -122.169057] },
+      { id: 'green-library', name: 'GREEN LIBRARY RACKS', at: [37.42703, -122.16813] },
+      { id: 'white-plaza', name: 'WHITE PLAZA RACKS', at: [37.42491, -122.17003] },
+      { id: 'eng-quad', name: 'ENGINEERING RACKS', at: [37.42795, -122.1741] },
+      { id: 'oval', name: 'OVAL RACKS', at: [37.43012, -122.16921] },
+    ],
     pois: [
       {
         id: 'hoover-tower',
@@ -131,6 +142,14 @@ export const LEVELS = [
     bbox: [43.0795, -77.6865, 43.0905, -77.6675],
     start: [43.08432, -77.67703],
     walkSpeed: 54,
+    // RIT is compact enough to walk, so the racks sit where a bike actually
+    // saves you something: the ends of the quarter mile, and the campus bike
+    // path out to the east side.
+    racks: [
+      { id: 'quarter-mile', name: 'QUARTER MILE RACKS', at: [43.08435, -77.67696] },
+      { id: 'global-village', name: 'GLOBAL VILLAGE RACKS', at: [43.08283, -77.68073] },
+      { id: 'winding-way', name: 'WINDING WAY PATH', at: [43.084337, -77.670552] },
+    ],
     pois: [
       {
         id: 'quarter-mile',
@@ -243,6 +262,16 @@ export const LEVELS = [
     bbox: [43.195, -77.745, 43.322, -77.645],
     start: [43.2585, -77.698],
     walkSpeed: 62,
+    // Greece is 8 by 14 km and there is no campus to walk across, so the racks
+    // are strung along the places you would actually ride between: the town
+    // hall, the mall, the lake shore, and the Erie Canal towpath where it
+    // crosses Elmgrove Road at Greece Canal Park.
+    racks: [
+      { id: 'town-hall', name: 'TOWN HALL RACK', at: [43.25828, -77.69863] },
+      { id: 'greece-ridge', name: 'GREECE RIDGE RACK', at: [43.20532, -77.69211] },
+      { id: 'long-pond', name: 'LONG POND RACK', at: [43.28628, -77.69093] },
+      { id: 'canal-towpath', name: 'CANAL TOWPATH', at: [43.196025, -77.732162] },
+    ],
     pois: [
       {
         id: 'greece-ridge',

@@ -16,8 +16,6 @@ import { drawPanel } from '../engine/ui.js';
 import { LEVELS } from '../games/explorer/levels.js';
 import { PLAYER, MARKER } from '../games/explorer/sprites.js';
 import { encodePNG, montage } from './png.mjs';
-import { quantize } from './pixelize.mjs';
-import { packIndices } from '../engine/art.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = resolve(ROOT, process.argv[2] || 'samples');
@@ -95,22 +93,6 @@ function scene(map, at, { w = 160, h = 144, label, found = 3 } = {}) {
   return s;
 }
 
-/** Centre-crop the stored greyscale down to panel size. */
-function cropCentre(gray, sw, sh, dw, dh) {
-  const out = new Uint8Array(dw * dh);
-  const scale = Math.min(sw / dw, sh / dh);
-  const ox = (sw - dw * scale) / 2;
-  const oy = (sh - dh * scale) / 2;
-  for (let y = 0; y < dh; y++) {
-    for (let x = 0; x < dw; x++) {
-      const sx = Math.min(sw - 1, Math.round(ox + x * scale));
-      const sy = Math.min(sh - 1, Math.round(oy + y * scale));
-      out[y * dw + x] = gray[sy * sw + sx];
-    }
-  }
-  return out;
-}
-
 /** Draw a landmark panel the way the game will: art, name, credit, text. */
 function panel(art, name, creditLine, body, w = 160, h = 144) {
   const s = new Screen(w, h);
@@ -174,58 +156,5 @@ for (const [id, at, label] of SCENES) {
 }
 
 export { maps, scene, panel, toRGB };
-
-// --- landmark panel comparison --------------------------------------------
-// The same landmark, photo-derived beside hand-drawn, in both looks.
-{
-  const { ART } = await import('../games/explorer/art.js');
-
-  const PAIRS = [
-    ['hoover-tower', 'hooverTower', 'HOOVER TOWER', ['A 285-foot bell tower', 'finished in 1941.']],
-    ['memorial-church', 'church', 'MEMORIAL CHURCH', ['Jane Stanford built this', 'church in 1903.']],
-    ['greece-ridge', 'mall', 'GREECE RIDGE', ['Two rival malls, joined', 'into one long building.']],
-  ];
-
-  const TONE = { mode: 'bayer', contrast: 1.45, gamma: 1.15 };
-
-  for (const lookId of ['dmg', 'color']) {
-    const cells = [];
-    for (const [photoId, artId, name, body] of PAIRS) {
-      const doc = load(`data/photos/${photoId}.json`);
-      const src = load(`data/photos/src/${photoId}.json`);
-      const gray = Uint8Array.from(Buffer.from(src.gray, 'base64'));
-      const crop = cropCentre(gray, src.w, src.h, doc.w, doc.h);
-      const credit = `${doc.credit.artist} / ${doc.credit.license}`.slice(0, 25);
-      cells.push(panel({ w: doc.w, h: doc.h, bits: packIndices(quantize(crop, doc.w, doc.h, TONE)) }, name, credit, body));
-      cells.push(panel(ART[artId], `${name} (DRAWN)`, '', body));
-    }
-    const m = montage(cells.map((v) => toRGB(v, LOOKS[lookId])), 2, 6);
-    writeFileSync(resolve(OUT, `art-compare-${lookId}.png`), encodePNG(m.w, m.h, m.rgb, 3));
-  }
-
-  // Tone sweep, straight off the greyscale working copy in data/photos/src.
-  const sweep = [];
-  for (const id of ['hoover-tower', 'memorial-church', 'greece-ridge', 'rit-library']) {
-    const doc = load(`data/photos/${id}.json`);
-    const src = load(`data/photos/src/${id}.json`);
-    const gray = Uint8Array.from(Buffer.from(src.gray, 'base64'));
-    const crop = cropCentre(gray, src.w, src.h, doc.w, doc.h);
-    for (const [label, opts] of [
-      ['ordered', { mode: 'bayer' }],
-      ['punchy', TONE],
-      ['diffused', { mode: 'floyd', contrast: 1.25 }],
-    ]) {
-      sweep.push(
-        panel({ w: doc.w, h: doc.h, bits: packIndices(quantize(crop, doc.w, doc.h, opts)) }, `${id.slice(0, 12)} ${label}`, '', []),
-      );
-    }
-  }
-  const sw = montage(sweep.map((v) => toRGB(v, LOOKS.dmg)), 3, 6);
-  writeFileSync(resolve(OUT, 'art-tone-sweep.png'), encodePNG(sw.w, sw.h, sw.rgb, 2));
-
-  const sent = panel(ART.sentinel, 'THE SENTINEL', 'no free photo exists', ['Albert Paley, 2003.', 'Seventy feet of steel.']);
-  const m2 = montage([toRGB(sent, LOOKS.dmg), toRGB(sent, LOOKS.color)], 2, 6);
-  writeFileSync(resolve(OUT, 'art-sentinel.png'), encodePNG(m2.w, m2.h, m2.rgb, 3));
-}
 
 console.log(`\nWrote samples to ${OUT}`);

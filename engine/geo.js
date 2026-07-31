@@ -58,14 +58,30 @@ export const MATERIALS = [
     over: (x, y) => (tileHash(x, y) > 0.62 ? variant(['crown0', 'crown1', 'crown2'], x * 3, y) : 0),
   },
   { name: 'sand', slot: SLOT.SAND, pick: () => T.sand },
-  { name: 'marsh', slot: SLOT.WATER, pick: () => T.marsh, solid: true },
-  { name: 'water', slot: SLOT.WATER, group: 'water', edge: 'water', solid: true, pick: () => T.water },
-  { name: 'waterDeep', slot: SLOT.WATER, group: 'water', edge: 'waterDeep', solid: true, pick: () => T.waterDeep },
+  { name: 'marsh', slot: SLOT.WATER, darkGround: true, pick: () => T.marsh, solid: true },
+  {
+    name: 'water',
+    slot: SLOT.WATER,
+    group: 'water',
+    edge: 'water',
+    darkGround: true,
+    solid: true,
+    pick: (x, y) => (tone(x, y, 5) > 0.58 ? T.waterRipple : T.waterCalm),
+  },
+  {
+    name: 'waterDeep',
+    slot: SLOT.WATER,
+    group: 'water',
+    edge: 'waterDeep',
+    darkGround: true,
+    solid: true,
+    pick: (x, y) => (tone(x, y, 5) > 0.58 ? T.deepRipple : T.deepCalm),
+  },
   { name: 'path', slot: SLOT.ROAD, group: 'walk', edge: 'path', pick: () => T.path },
   { name: 'plaza', slot: SLOT.ROAD, group: 'walk', edge: 'plaza', pick: () => T.plaza },
-  { name: 'road', slot: SLOT.ROAD, pick: (x, y) => (tone(x, y, 4) > 0.62 ? T.roadGrit : T.road) },
-  { name: 'parking', slot: SLOT.ROAD, pick: (x, y) => (x % 4 === 0 ? T.parkingLine : T.parking) },
-  { name: 'rail', slot: SLOT.ROAD, pick: () => T.rail },
+  { name: 'road', slot: SLOT.ROAD, darkGround: true, pick: (x, y) => (tone(x, y, 4) > 0.62 ? T.roadGrit : T.road) },
+  { name: 'parking', slot: SLOT.ROAD, darkGround: true, pick: (x, y) => (x % 4 === 0 ? T.parkingLine : T.parking) },
+  { name: 'rail', slot: SLOT.ROAD, darkGround: true, pick: () => T.rail },
   { name: 'steps', slot: SLOT.ROAD, pick: () => T.steps },
   // Buildings do not use `pick`/`edge` the way other materials do - they are
   // baked in three-quarter view below. `edge` is kept so validate.mjs still
@@ -81,7 +97,7 @@ export const MATERIALS = [
     pick: () => T.roof,
   },
   { name: 'hedge', slot: SLOT.TREE, solid: true, pick: () => T.hedge },
-  { name: 'fence', slot: SLOT.TREE, solid: true, pick: () => T.fence },
+  { name: 'fence', slot: SLOT.LAND, solid: true, pick: () => T.fence },
 ];
 
 export const MAT = Object.create(null);
@@ -273,8 +289,15 @@ export function compileMap(def) {
   // there, a hard line where it meets the ground. Everything behind that is
   // roof. A slab becomes a roof with a building front along the bottom, which
   // is what every overhead game of this era actually drew.
-  const depth = new Uint8Array(n); // 1 = southernmost course of the footprint
-  const runLen = new Uint8Array(n); // how deep this column of the footprint is
+  const depth = new Uint8Array(n); // 1 = southernmost course of its range
+  const runLen = new Uint8Array(n); // how deep that range is
+  // Nothing anybody actually builds is 150 m deep in one span; a quadrangle is
+  // ranges around a court, and OSM has merged them into one polygon. So a very
+  // deep column is split into ranges of at most this many tiles, each of which
+  // gets its own front. The split follows the footprint rather than a global
+  // grid, so the fronts step with the building instead of ruling a lattice over
+  // it - which is exactly what made the old seam tiles read as wallpaper.
+  const maxRange = Math.max(8, Math.round(56 / mpt));
   for (let x = 0; x < width; x++) {
     let y = 0;
     while (y < height) {
@@ -284,18 +307,37 @@ export function compileMap(def) {
       }
       let y1 = y;
       while (y1 + 1 < height && isBuilding((y1 + 1) * width + x)) y1++;
-      const len = Math.min(255, y1 - y + 1);
-      for (let k = y; k <= y1; k++) {
-        depth[k * width + x] = Math.min(255, y1 - k + 1);
-        runLen[k * width + x] = len;
+      let left = y1 - y + 1;
+      let ranges = Math.ceil(left / maxRange);
+      let yy = y1;
+      while (ranges > 0) {
+        const len = Math.round(left / ranges);
+        for (let k = 0; k < len; k++) {
+          const i = (yy - k) * width + x;
+          depth[i] = Math.min(255, k + 1);
+          runLen[i] = Math.min(255, len);
+        }
+        yy -= len;
+        left -= len;
+        ranges--;
       }
       y = y1 + 2; // y1+1 is known not to be a building
     }
   }
 
+  // How tall the wall front is, in tiles. A course is one tile, so this has to
+  // be read off the map scale: at 6 m/tile two courses is a plausible four
+  // storeys, but at 12 m/tile the same two courses would be a tower block and
+  // would eat half of every roof.
+  const storeys = Math.max(1, Math.min(2, Math.round(12 / mpt)));
+
   /** How many courses of facade a footprint this deep can carry. */
   const facadeCourses = (len, tall) =>
-    tall ? (len >= 5 ? 3 : len >= 3 ? 2 : 1) : len >= 3 ? 2 : 1;
+    Math.min(storeys + (tall ? 1 : 0), len <= 2 ? 1 : len <= 4 ? 2 : 3);
+
+  /** Is this cell part of a wall front rather than a roof? */
+  const isFacade = (i) =>
+    isBuilding(i) && depth[i] <= facadeCourses(runLen[i], MATERIALS[mat[i]].tall);
 
   function bakeBuilding(x, y, i, m) {
     const d = depth[i];
@@ -316,8 +358,14 @@ export function compileMap(def) {
 
     if (y === 0 || !isBuilding(i - width)) mask |= N;
     if (y === height - 1 || !isBuilding(i + width)) mask |= S;
-    // The course resting on the wall head falls into the eaves shadow.
+    // The course resting on the wall head falls into the eaves shadow. Between
+    // that and the ridge the roof is flat on purpose: a texture at tile pitch
+    // is exactly what made this read as wallpaper before.
     if (d === courses + 1) return T[`roofEave@${mask}`];
+    // Top course of a range that has another range standing behind it: it lies
+    // in that range's shadow. Where the top course is the skyline instead, the
+    // north rim of the edge tile already gives it its highlight.
+    if (runLen[i] === d && !(mask & N) && isFacade(i - width)) return T[`roofBack@${mask}`];
     if (mask === 0) {
       // Rooftop plant, sparsely, so a big roof has something on it that a
       // repeating texture cannot give you.
@@ -326,7 +374,8 @@ export function compileMap(def) {
       if (r > 0.976) return T.roofVent;
       if (r > 0.966) return T.roofLight;
     }
-    return T[`${patchHash(x, y, 7) > 0.62 ? 'roofWeather' : 'roof'}@${mask}`];
+    const p = tone(x, y, 7);
+    return T[`${p < 0.38 ? 'roofWeather' : p > 0.7 ? 'roofPale' : 'roof'}@${mask}`];
   }
 
   for (let y = 0; y < height; y++) {
@@ -379,13 +428,13 @@ export function compileMap(def) {
       if (over[i] || casts(i)) continue;
       const above = y > 0 && casts(i - width);
       const left = x > 0 && casts(i - 1);
-      let t = 0;
-      if (above && left) t = T.shadowNW;
-      else if (above) t = T.shadowN;
-      else if (left) t = T.shadowW;
-      else if (x > 0 && y > 0 && casts(i - width - 1)) t = T.shadowDiag;
-      if (!t) continue;
-      over[i] = t;
+      let name = '';
+      if (above && left) name = 'shadowNW';
+      else if (above) name = 'shadowN';
+      else if (left) name = 'shadowW';
+      else if (x > 0 && y > 0 && casts(i - width - 1)) name = 'shadowDiag';
+      if (!name) continue;
+      over[i] = T[MATERIALS[mat[i]].darkGround ? `${name}Dark` : name];
       overSlot[i] = slots[i];
     }
   }
