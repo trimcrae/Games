@@ -249,9 +249,20 @@ class StubConsole {
     this.scene?.update?.(dt, this);
   }
 
-  /** One frame, yielding to the event loop so pending file reads can land. */
+  /** One frame. setImmediate is enough to flush promises already resolved. */
   async frame(dt = 1 / 60) {
     await new Promise((r) => setImmediate(r));
+    this.tick(dt);
+  }
+
+  /**
+   * One frame that also yields to the timer queue. A file read finishes on the
+   * libuv thread pool, and a whole spin of setImmediate callbacks can go by
+   * before it lands - so anything waiting on the cartridge's `fetch` has to
+   * give real time back, or the wait is a race the harness usually loses.
+   */
+  async frameIO(dt = 1 / 60) {
+    await new Promise((r) => setTimeout(r, 1));
     this.tick(dt);
   }
 
@@ -269,13 +280,19 @@ class StubConsole {
     return !this.transition;
   }
 
-  /** Run frames until `pred(scene)` holds, or give up. */
+  /** Run frames until `pred(scene)` holds, or give up. Waits on IO properly. */
   async waitFor(pred, maxFrames = 900) {
     for (let i = 0; i < maxFrames; i++) {
       if (pred(this.scene)) return this.scene;
-      await this.frame();
+      await this.frameIO();
     }
     return pred(this.scene) ? this.scene : null;
+  }
+
+  /** Run frames until `pred()` holds or the budget runs out. */
+  async waitUntil(pred, maxFrames = 300) {
+    for (let i = 0; i < maxFrames && !pred(); i++) await this.frameIO();
+    return pred();
   }
 }
 
@@ -1203,7 +1220,8 @@ async function suiteText() {
         continue;
       }
 
-      for (let i = 0; i < 120 && !panel.art; i++) await sys.frame(); // let the photo come off disk
+      // The panel loads its photograph asynchronously; give it real time.
+      await sys.waitUntil(() => panel.art, 300);
       check(Boolean(panel.art), `${level.id}/${poi.id}: the landmark panel never resolved its picture`);
 
       const lineCount = panel.constructor?.lineCount;
