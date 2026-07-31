@@ -68,6 +68,10 @@ export function lampBearing(world, ship) {
   return Math.atan2(ship.rho * Math.sin(ship.theta), ship.rho * Math.cos(ship.theta) - world.lampRho);
 }
 
+// Twice the renderer's 190px reference radius: turns a hull's beam in reference
+// pixels into the angle it subtends at the lamp, in rho.
+const HULL_REF = 380;
+
 const LIVES = 3;
 const HORN_COST = 1 / 3;
 const HORN_REFILL = 0.155; // full gauge in about 6.5s
@@ -96,7 +100,6 @@ export class World {
     this.score = 0;
     this.lives = LIVES;
     this.streak = 0;
-    this.best = 0; // filled in by the scene from the save
     this.wave = 1;
     this.pending = 0;
     this.spawnTimer = 0;
@@ -310,7 +313,7 @@ export class World {
       const d = Math.abs(((bearing - this.beam + Math.PI) % (2 * Math.PI)) - Math.PI);
       // Angular slop for the hull's own width: a tanker is a wider target than
       // a sloop, and every hull is a wider target the closer it gets.
-      const slop = s.type.beam / 380 / Math.max(0.06, dist);
+      const slop = s.type.beam / HULL_REF / Math.max(0.06, dist);
       const inBeam = d <= half + slop && dist <= reach;
       s.dist = dist;
       s.lit = inBeam ? Math.min(1, s.lit + dt * 8) : Math.max(0, s.lit - dt * 6);

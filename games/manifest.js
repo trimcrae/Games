@@ -3,6 +3,7 @@
 
 import { ICON_ART as EXPLORER_ICON } from './explorer/art.js';
 import { ICON_ART as COURIER_ICON } from './courier/sprites.js';
+import { ICON_ART as BEACON_ICON } from './beacon/art.js';
 
 export const CARTRIDGES = [
   {
@@ -18,5 +19,12 @@ export const CARTRIDGES = [
     subtitle: 'BEAT THE CLOCK',
     icon: COURIER_ICON,
     load: () => import('./courier/main.js'),
+  },
+  {
+    id: 'beacon',
+    title: 'BEACON',
+    subtitle: 'KEEP THEM OFF THE ROCKS',
+    icon: BEACON_ICON,
+    load: () => import('./beacon/main.js'),
   },
 ];

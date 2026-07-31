@@ -181,6 +181,28 @@ function strokePolyline(pts, halfWidth, w, h, plot) {
   }
 }
 
+/**
+ * Shoelace centroid and area of a closed ring, in whatever units the points
+ * are in. Returns null for a degenerate ring - a sliver whose vertices are
+ * collinear has no meaningful centre, and dividing by its area would give one
+ * anyway, somewhere off the map.
+ * @param {Array<[number,number]>} pts
+ * @returns {{x:number, y:number, area:number}|null}
+ */
+function ringCentroid(pts) {
+  let twice = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const cross = pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+    twice += cross;
+    cx += (pts[j][0] + pts[i][0]) * cross;
+    cy += (pts[j][1] + pts[i][1]) * cross;
+  }
+  if (Math.abs(twice) < 1e-9) return null;
+  return { x: cx / (3 * twice), y: cy / (3 * twice), area: Math.abs(twice / 2) };
+}
+
 /** Walk the centreline of a linear feature, marking orientation for lane dashes. */
 function markCentreline(pts, w, h, mark) {
   for (let i = 0; i + 1 < pts.length; i++) {
@@ -439,6 +461,27 @@ export function compileMap(def) {
     }
   }
 
+  // --- named places --------------------------------------------------------
+  //
+  // Rasterizing throws the features away, and with them every name OSM knew:
+  // once a footprint is a run of roof tiles there is nothing left to say it was
+  // Wallace Library. A game that wants an address book - somewhere to deliver
+  // to, something to label - would otherwise have to re-read the source
+  // document and re-project the rings it just handed us. So the names are kept
+  // here, while the projected rings are still to hand, as an index of centroids
+  // in tile space.
+  //
+  // Rings only: a centroid and an area are what makes a place a place, and a
+  // named road has neither. Nothing is filtered by size or by kind, because
+  // "big enough to matter" means something different to every caller.
+  const places = [];
+  for (const f of def.features || []) {
+    if (!f.name || !f.ring || f.ring.length < 3) continue;
+    const c = ringCentroid(toTiles(f.ring));
+    if (!c) continue;
+    places.push({ name: f.name, kind: f.kind, tx: c.x, ty: c.y, area: c.area });
+  }
+
   // --- points of interest --------------------------------------------------
   const pois = (def.pois || []).map((poi) => {
     const [tx, ty] = proj.toTile(poi.at[0], poi.at[1]);
@@ -467,6 +510,9 @@ export function compileMap(def) {
     over,
     overSlot,
     mat,
+    // Every named footprint the features carried: { name, kind, tx, ty, area },
+    // centroid and area in tile units, in source order.
+    places,
     pois,
     start,
     walkSpeed: def.walkSpeed || 52,
@@ -479,21 +525,98 @@ export function compileMap(def) {
   };
 }
 
+// --- reachability ----------------------------------------------------------
+//
+// "Is there open ground near here" and "can the player get to it" are different
+// questions, and only the second one is worth anything. A map compiled from
+// real geometry is full of sealed pockets - a quadrangle ringed by its own
+// building, the inside of a stadium concourse - and a target dropped in one of
+// them looks perfectly fine to every test that only counts open tiles. It once
+// shipped a Stanford spawn point sealed inside a 52-tile courtyard.
+//
+// The walkable graph is a four-connected flood over open tiles. Both halves of
+// that are load-bearing:
+//   - the body's feet box fits inside one tile (see engine/body.js), so "can
+//     stand centred on this tile" is exactly "this tile is open";
+//   - a move is resolved one axis at a time, so a diagonal squeeze between two
+//     solid tiles is not a legal route and diagonals are left out.
+
+const NO_ROUTE = -1;
+
+/**
+ * Walking distance in tile steps from one tile to every tile reachable from it.
+ *
+ * @param {object} map compiled by compileMap
+ * @param {number} tx start tile x
+ * @param {number} ty start tile y
+ * @param {number} [maxSteps] stop expanding past this radius. Greece is
+ *   676x1171 tiles; a caller that only cares about its own neighbourhood turns
+ *   a 25ms full sweep into a couple of milliseconds by capping the flood.
+ * @returns {{dist: Int32Array, reached: number}} dist is -1 where unreachable
+ */
+export function walkField(map, tx, ty, maxSteps = Infinity) {
+  const { w, h, solid } = map;
+  const dist = new Int32Array(w * h).fill(NO_ROUTE);
+  let reached = 0;
+  const sx = Math.round(tx);
+  const sy = Math.round(ty);
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return { dist, reached };
+  const start = sy * w + sx;
+  if (solid[start]) return { dist, reached };
+
+  // A plain ring buffer is enough: every edge costs one step, so the queue is
+  // already in distance order.
+  const queue = new Int32Array(w * h);
+  let head = 0;
+  let tail = 0;
+  queue[tail++] = start;
+  dist[start] = 0;
+
+  while (head < tail) {
+    const i = queue[head++];
+    reached++;
+    const d = dist[i] + 1;
+    if (d > maxSteps) continue;
+    const x = i % w;
+    const y = (i / w) | 0;
+    if (x > 0 && !solid[i - 1] && dist[i - 1] === NO_ROUTE) ((dist[i - 1] = d), (queue[tail++] = i - 1));
+    if (x < w - 1 && !solid[i + 1] && dist[i + 1] === NO_ROUTE) ((dist[i + 1] = d), (queue[tail++] = i + 1));
+    if (y > 0 && !solid[i - w] && dist[i - w] === NO_ROUTE) ((dist[i - w] = d), (queue[tail++] = i - w));
+    if (y < h - 1 && !solid[i + w] && dist[i + w] === NO_ROUTE) ((dist[i + w] = d), (queue[tail++] = i + w));
+  }
+  return { dist, reached };
+}
+
+/** True where `reach` says the player can get to this tile. */
+export const reachable = (map, reach, tx, ty) =>
+  tx >= 0 && ty >= 0 && tx < map.w && ty < map.h && reach[ty * map.w + tx] !== NO_ROUTE;
+
 /**
  * Find the nearest walkable tile centre to a point, spiralling outward.
  * Used to place the player and to sanity-check POI reachability.
+ *
+ * @param {object} map compiled by compileMap
+ * @param {number} tx
+ * @param {number} ty
+ * @param {number} [maxRadius] tiles
+ * @param {Int32Array} [reach] a `walkField` dist array. With one, the answer is
+ *   the nearest open tile the player can actually *get to*, rather than the
+ *   nearest one that merely exists - which is the difference between a target
+ *   and a target sealed in a courtyard.
+ * @returns {[number,number]|null}
  */
-export function nearestOpen(map, tx, ty, maxRadius = 40) {
+export function nearestOpen(map, tx, ty, maxRadius = 40, reach = null) {
+  const open = (x, y) => !map.solidAt(x, y) && (!reach || reachable(map, reach, x, y));
   const cx = Math.round(tx);
   const cy = Math.round(ty);
-  if (!map.solidAt(cx, cy)) return [cx, cy];
+  if (open(cx, cy)) return [cx, cy];
   for (let r = 1; r <= maxRadius; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const x = cx + dx;
         const y = cy + dy;
-        if (!map.solidAt(x, y)) return [x, y];
+        if (open(x, y)) return [x, y];
       }
     }
   }

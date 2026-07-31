@@ -185,6 +185,7 @@ class TitleScene {
   enter(sys) {
     this.save = sys.saveFor(GAME_ID);
     this.best = this.save.get('best', 0);
+    if (sys.screen) this.ensure(sys.screen);
     this.t = 0;
   }
 
@@ -302,7 +303,9 @@ class PlayScene {
 
   enter(sys) {
     this.save = sys.saveFor(GAME_ID);
-    this.world.best = this.save.get('best', 0);
+    // Lay out before the first update, so the opening seconds of the night are
+    // simulated against the real screen rather than the defaults.
+    if (sys.screen) this.ensure(sys.screen);
     this.t = 0;
   }
 
@@ -319,16 +322,14 @@ class PlayScene {
     return this.L;
   }
 
-  restart(sys) {
+  restart() {
     this.world = new World(nextSeed());
-    this.world.best = this.save?.get('best', 0) || 0;
     if (this.L) applyLayout(this.world, this.L);
     this.popups.length = 0;
     this.marks.length = 0;
     this.flash = 0;
     this.recorded = false;
     this.paused = false;
-    void sys;
   }
 
   /** Remember the night if it was a good one. */
@@ -359,7 +360,7 @@ class PlayScene {
       this.world.update(dt);
       if (sys.input.pressed('a') || sys.input.pressed('start')) {
         SFX.confirm(sys.audio);
-        this.restart(sys);
+        this.restart();
       } else if (sys.input.pressed('b')) {
         SFX.cancel(sys.audio);
         sys.transitionTo((s) => s.replace(new TitleScene()));
@@ -397,7 +398,7 @@ class PlayScene {
     if (!sys.input.pressed('a')) return;
     SFX.confirm(sys.audio);
     if (this.pauseMenu.index === 0) this.paused = false;
-    else if (this.pauseMenu.index === 1) this.restart(sys);
+    else if (this.pauseMenu.index === 1) this.restart();
     else {
       this.record();
       sys.transitionTo((s) => s.replace(new TitleScene()));
