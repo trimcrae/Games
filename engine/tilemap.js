@@ -32,6 +32,7 @@ export function drawMap(screen, map, camX, camY, opts = {}) {
   const offY = camY - ty0 * TILE;
   const cols = Math.ceil((screen.w + offX) / TILE);
   const rows = Math.ceil((viewH + offY) / TILE);
+  const over = map.over;
 
   screen.clip(0, viewY, screen.w, viewH);
   for (let row = 0; row < rows; row++) {
@@ -51,6 +52,11 @@ export function drawMap(screen, map, camX, camY, opts = {}) {
       }
       const i = base + tx;
       screen.tile(TILESET, map.tiles[i], dx, dy, map.slots[i]);
+      // Second pass: tree crowns and cast shadows. These tiles are mostly
+      // TRANSPARENT, so they blend with the ground underneath - the framebuffer
+      // has no alpha channel, but a dithered overlay gets the same effect.
+      const o = over && over[i];
+      if (o) screen.tile(TILESET, o, dx, dy, map.overSlot[i]);
     }
   }
   screen.noClip();
