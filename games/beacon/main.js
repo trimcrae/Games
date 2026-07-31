@@ -14,7 +14,7 @@ import { SLOT, px } from '../../engine/gfx.js';
 import { ICON } from '../../engine/font.js';
 import { box, Menu, TextBox } from '../../engine/ui.js';
 import { SFX } from '../../engine/audio.js';
-import { World, beamHalf, beamReach, BEAM_LIMIT } from './sim.js';
+import { World, beamHalf, beamReach, lampBearing, BEAM_LIMIT } from './sim.js';
 import { layoutFor, jitter, polar, drawSea, drawSwell, drawRocks, drawTower, drawShip, drawWreck, HUD_H } from './render.js';
 import { ICON_ART } from './art.js';
 
@@ -157,11 +157,11 @@ function autopilot(world) {
     if (!target || s.rho < target.rho) target = s;
   }
   if (!target) return { turn: Math.sin(world.time * 0.7) > 0 ? 0.5 : -0.5 };
-  const diff = target.theta - world.beam;
+  const diff = lampBearing(world, target) - world.beam;
   const near = Math.abs(diff) < 0.05;
   return {
     turn: near ? 0 : Math.sign(diff),
-    focus: near && target.rho > 0.45,
+    focus: near && target.dist > 0.4,
     horn: world.horn > 0.99 && world.ships.length > 2,
   };
 }
