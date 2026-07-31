@@ -35,6 +35,10 @@ export class Input {
     this.prev = new Set();
     this.held = new Map(); // button -> seconds held, for key repeat
     this.sources = { touch: new Set(), key: new Set(), pad: new Set() };
+    // A press that arrives and releases inside a single frame would otherwise
+    // never be observed by poll() at all. Latching it means a quick tap - which
+    // is how people actually use a touchscreen - always registers.
+    this.latched = new Set();
     this.anyPressSincePoll = false;
   }
 
@@ -46,6 +50,7 @@ export class Input {
     if (isDown) {
       if (!set.has(button)) this.anyPressSincePoll = true;
       set.add(button);
+      this.latched.add(button);
     } else {
       set.delete(button);
     }
@@ -55,12 +60,21 @@ export class Input {
     this.sources[source]?.clear();
   }
 
+  /** Drop everything, including latched presses. Used when focus is lost. */
+  reset() {
+    for (const set of Object.values(this.sources)) set.clear();
+    this.latched.clear();
+  }
+
   /** Called once per frame, before the scene updates. */
   poll(dt) {
     this.lastDt = dt;
     this.prev = new Set(this.down);
     this.down = new Set();
     for (const set of Object.values(this.sources)) for (const b of set) this.down.add(b);
+    // Presses that came and went since the last poll still count for one frame.
+    for (const b of this.latched) this.down.add(b);
+    this.latched.clear();
 
     for (const b of BUTTONS) {
       if (this.down.has(b)) this.held.set(b, (this.held.get(b) || 0) + dt);
