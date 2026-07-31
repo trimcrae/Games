@@ -14,14 +14,14 @@ export const PANEL = { w: 128, h: 88 };
 
 export const PHOTOS = [
   // --- Stanford ------------------------------------------------------------
-  { id: 'hoover-tower', wiki: 'Hoover Tower', search: 'Hoover Tower Stanford' },
-  { id: 'memorial-church', wiki: 'Stanford Memorial Church', search: 'Stanford Memorial Church facade' },
-  { id: 'main-quad', search: 'Stanford University Main Quad', tune: { contrast: 1.15 } },
+  { id: 'hoover-tower', wiki: 'Hoover Tower', search: 'Hoover Tower Stanford', gravity: 'north' },
+  { id: 'memorial-church', wiki: 'Stanford Memorial Church', search: 'Stanford Memorial Church facade', gravity: 'north' },
+  { id: 'main-quad', search: 'Stanford Main Quadrangle arcade' },
+  { id: 'stanford-oval', search: 'Stanford Oval panorama' },
   { id: 'green-library', wiki: 'Cecil H. Green Library', search: 'Green Library Stanford' },
   { id: 'cantor-arts', wiki: 'Cantor Arts Center', search: 'Cantor Arts Center Stanford' },
   { id: 'rodin-garden', search: 'Rodin Sculpture Garden Stanford Gates of Hell' },
   { id: 'stanford-stadium', wiki: 'Stanford Stadium', search: 'Stanford Stadium' },
-  { id: 'stanford-oval', search: 'Palm Drive Stanford University oval' },
   { id: 'stanford-dish', wiki: 'Stanford Dish', search: 'Stanford Dish radio telescope' },
 
   // --- RIT -----------------------------------------------------------------
@@ -36,9 +36,9 @@ export const PHOTOS = [
   // --- Greece, NY ----------------------------------------------------------
   { id: 'greece-ridge', wiki: 'The Mall at Greece Ridge', search: 'Mall at Greece Ridge' },
   { id: 'braddock-bay', wiki: 'Braddock Bay', search: 'Braddock Bay New York' },
-  { id: 'greece-canal-park', search: 'Erie Canal Greece New York towpath' },
   { id: 'long-pond', search: 'Long Pond Greece New York' },
-  { id: 'greece-athena', search: 'Greece Athena High School New York' },
-  { id: 'northgate-plaza', search: 'Northgate Plaza Greece New York' },
-  { id: 'lake-ontario-shore', search: 'Lake Ontario shoreline Monroe County New York' },
+  { id: 'greece-town-hall', search: 'Greece Town Hall Monroe County New York' },
+  { id: 'greece-historical', search: 'Greece Historical Society museum New York' },
+  { id: 'schallers', search: "Schaller's Drive-In Rochester New York" },
+  { id: 'braddock-bay-park', search: 'Braddock Bay Park marina Greece New York' },
 ];

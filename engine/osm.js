@@ -178,6 +178,53 @@ export function simplify(points, toleranceM) {
 
 const round6 = (n) => Math.round(n * 1e6) / 1e6;
 
+const ptKey = (p) => `${p[0].toFixed(7)},${p[1].toFixed(7)}`;
+const isClosed = (ring) => ring.length > 3 && ptKey(ring[0]) === ptKey(ring[ring.length - 1]);
+
+/**
+ * Stitch the outer members of a multipolygon relation into closed rings.
+ * Overpass returns each member way separately, so a lake arrives as a handful
+ * of unclosed fragments that have to be joined end-to-end before they mean
+ * anything. Holes (inner members) are ignored; the fill pass tolerates that.
+ */
+export function assembleRings(members) {
+  const pool = members
+    .filter((m) => (m.role === 'outer' || !m.role) && m.geometry && m.geometry.length > 1)
+    .map((m) => m.geometry.filter((p) => p && Number.isFinite(p.lat)).map((p) => [p.lat, p.lon]))
+    .filter((g) => g.length > 1);
+
+  const rings = [];
+  while (pool.length) {
+    let cur = pool.shift();
+    let joined = true;
+    while (joined && !isClosed(cur)) {
+      joined = false;
+      const head = ptKey(cur[0]);
+      const tail = ptKey(cur[cur.length - 1]);
+      for (let i = 0; i < pool.length; i++) {
+        const s = pool[i];
+        const sHead = ptKey(s[0]);
+        const sTail = ptKey(s[s.length - 1]);
+        if (tail === sHead) cur = cur.concat(s.slice(1));
+        else if (tail === sTail) cur = cur.concat(s.slice(0, -1).reverse());
+        else if (head === sTail) cur = s.slice(0, -1).concat(cur);
+        else if (head === sHead) cur = s.slice(1).reverse().concat(cur);
+        else continue;
+        pool.splice(i, 1);
+        joined = true;
+        break;
+      }
+    }
+    if (cur.length >= 3) rings.push(cur);
+  }
+  return rings;
+}
+
+/** Force a ring closed, as area features must be. */
+function closeRing(pts) {
+  return isClosed(pts) ? pts : [...pts, pts[0]];
+}
+
 /**
  * Turn an Overpass `out geom` response into normalized features.
  * @param {object} overpass parsed Overpass JSON
@@ -192,18 +239,19 @@ export function normalizeOverpass(overpass, opts = {}) {
   const landmarks = [];
   const seen = new Set();
 
-  const addGeom = (geometry, tags, id) => {
-    if (!geometry || geometry.length < 2) return;
-    let pts = geometry.filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon)).map((p) => [p.lat, p.lon]);
+  const addPoints = (points, tags, id) => {
+    let pts = points;
     if (pts.length < 2) return;
-    const first = pts[0];
-    const last = pts[pts.length - 1];
-    const closed = pts.length > 3 && first[0] === last[0] && first[1] === last[1];
-    const c = classify(tags, closed);
+    const c = classify(tags, isClosed(pts));
     if (!c) return;
 
-    const isArea = closed && !c.width;
+    // A classification without a width is an area, however its geometry
+    // arrived: a lake tagged natural=water is a lake even if the way that
+    // carries it was left unclosed.
+    const isArea = !c.width;
     if (isArea) {
+      if (pts.length < 3) return;
+      pts = closeRing(pts);
       const area = ringArea(pts);
       const min = c.kind === 'building' ? minBuildingArea : minAreaFeature;
       if (min && area < min && !tags.name) return;
@@ -244,17 +292,15 @@ export function normalizeOverpass(overpass, opts = {}) {
       continue;
     }
     if (el.type === 'way') {
-      addGeom(el.geometry, tags, `w${el.id}`);
+      const pts = (el.geometry || [])
+        .filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon))
+        .map((p) => [p.lat, p.lon]);
+      addPoints(pts, tags, `w${el.id}`);
       continue;
     }
     if (el.type === 'relation') {
-      // `out geom` inlines member geometry; treat each outer member as its own ring.
-      const members = el.members || [];
-      let n = 0;
-      for (const m of members) {
-        if (m.role === 'inner') continue; // holes are ignored; the fill pass is tolerant
-        addGeom(m.geometry, tags, `r${el.id}:${n++}`);
-      }
+      // `out geom` inlines member geometry; stitch the outers into real rings.
+      assembleRings(el.members || []).forEach((ring, n) => addPoints(ring, tags, `r${el.id}:${n}`));
     }
   }
 

@@ -22,6 +22,7 @@ import { packIndices } from '../engine/art.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = resolve(ROOT, 'data/photos');
+const SRC_DIR = resolve(ROOT, 'data/photos/src');
 const UA = 'games-handheld-artbuilder/1.0 (https://github.com/trimcrae/games; pixel-art conversion)';
 
 const FREE = /^(cc0|cc[ -]by([ -]sa)?([ -][\d.]+)?|public domain|pd([ -]|$)|no restrictions|attribution)/i;
@@ -133,6 +134,9 @@ function magick(args) {
   return execFileSync(MAGICK, args, { maxBuffer: 1 << 28 });
 }
 
+/** Larger working copy kept in the repo so tone curves can be retuned offline. */
+const SRC = { w: 256, h: 176 };
+
 async function convert(entry, imageUrl) {
   const res = await fetch(imageUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(120_000) });
   if (!res.ok) throw new Error(`download HTTP ${res.status}`);
@@ -140,20 +144,27 @@ async function convert(entry, imageUrl) {
   const src = resolve(tmpdir(), `poi-src-${entry.id}`);
   writeFileSync(src, bytes);
   const gravity = entry.gravity || 'center';
-  const out = magick([
-    src,
-    '-auto-orient',
-    '-colorspace', 'Gray',
-    '-resize', `${PANEL.w}x${PANEL.h}^`,
-    '-gravity', gravity,
-    '-extent', `${PANEL.w}x${PANEL.h}`,
-    '-normalize',
-    '-unsharp', '0x1+1.0+0',
-    '-depth', '8',
-    'pgm:-',
-  ]);
+  const render = (w, h) =>
+    readPGM(
+      new Uint8Array(
+        magick([
+          src,
+          '-auto-orient',
+          '-colorspace', 'Gray',
+          '-resize', `${w}x${h}^`,
+          '-gravity', gravity,
+          '-extent', `${w}x${h}`,
+          '-normalize',
+          '-unsharp', '0x1+1.0+0',
+          '-depth', '8',
+          'pgm:-',
+        ]),
+      ),
+    );
+  const panel = render(PANEL.w, PANEL.h);
+  const source = render(SRC.w, SRC.h);
   await rm(src, { force: true });
-  return readPGM(new Uint8Array(out));
+  return { panel, source };
 }
 
 async function run() {
@@ -180,7 +191,8 @@ async function run() {
     console.log(`    ${found.title}`);
     console.log(`    ${found.credit.license} - ${found.credit.artist}`);
     try {
-      const { w, h, gray } = await convert(entry, found.url);
+      const { panel, source } = await convert(entry, found.url);
+      const { w, h, gray } = panel;
       const tune = entry.tune || {};
       const doc = {
         id: entry.id,
@@ -192,6 +204,13 @@ async function run() {
         bitsFloyd: packIndices(quantize(gray, w, h, { mode: 'floyd', ...tune })),
       };
       await writeFile(resolve(OUT_DIR, `${entry.id}.json`), JSON.stringify(doc));
+      // Build-time only: the greyscale source, so tone curves can be retuned
+      // without going back to the network.
+      await mkdir(SRC_DIR, { recursive: true });
+      await writeFile(
+        resolve(SRC_DIR, `${entry.id}.json`),
+        JSON.stringify({ id: entry.id, w: source.w, h: source.h, gray: Buffer.from(source.gray).toString('base64') }),
+      );
       ok.push({ id: entry.id, ...found.credit });
       console.log(`    wrote ${w}x${h} panel`);
     } catch (err) {
