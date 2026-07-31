@@ -392,7 +392,7 @@ export class WorldScene {
    * corners sample every one of them.
    */
   blocked(x, y) {
-    const half = 4;
+    const half = 3;
     const top = y - 3;
     const bottom = y + 3;
     for (const [cx, cy] of [
