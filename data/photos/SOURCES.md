@@ -6,7 +6,9 @@ in-game beneath the panel. Only public-domain / CC0 / CC BY / CC BY-SA images
 are accepted (see `tools/fetch-photos.mjs`).
 
 Regenerate with the `fetch-photos` workflow, or locally with
-`node tools/fetch-photos.mjs [id...]` (needs ImageMagick).
+`node tools/fetch-photos.mjs [id...]` (needs ImageMagick). Existing colour
+panels are skipped unless `--force` is passed; this file is rebuilt from every
+panel in `data/photos/`, so a partial run keeps the other credits intact.
 
 | Panel | Source file | Author | Licence |
 | --- | --- | --- | --- |
@@ -21,6 +23,7 @@ Regenerate with the `fetch-photos` workflow, or locally with
 | `stanford-dish` | [Stanford Dish February 2013 029.jpg](https://commons.wikimedia.org/wiki/File:Stanford_Dish_February_2013_029.jpg) | King of Hearts | CC BY-SA 4.0 |
 | `white-plaza` | [Pro-life and pro-choice graffitis on stage of Stanford White Memorial Plaza - 2.jpg](https://commons.wikimedia.org/wiki/File:Pro-life_and_pro-choice_graffitis_on_stage_of_Stanford_White_Memorial_Plaza_-_2.jpg) | Suiren2022 | CC BY-SA 4.0 |
 | `engineering-quad` | [Jen-Hsun Huang Engineering Center in 2016.jpg](https://commons.wikimedia.org/wiki/File:Jen-Hsun_Huang_Engineering_Center_in_2016.jpg) | Frank Schulenburg | CC BY-SA 4.0 |
+| `rit-campus` | [RIT building - Eastman Building and Kodak Quad.JPG](https://commons.wikimedia.org/wiki/File:RIT_building_-_Eastman_Building_and_Kodak_Quad.JPG) | Matthew D. Wilson (LtPowers) | CC BY-SA 3.0 |
 | `rit-golisano` | [RIT building - Golisano Building.jpg](https://commons.wikimedia.org/wiki/File:RIT_building_-_Golisano_Building.jpg) | Matthew D. Wilson (LtPowers) | CC BY-SA 2.5 |
 | `rit-tiger` | [RIT Tiger Statue.jpg](https://commons.wikimedia.org/wiki/File:RIT_Tiger_Statue.jpg) | Rochester Institute of Technology/Nate Tangeman | CC BY-SA 4.0 |
 | `rit-quarter-mile` | [Rit quarter mile.jpg](https://commons.wikimedia.org/wiki/File:Rit_quarter_mile.jpg) | Stuuf | Public domain |
@@ -32,16 +35,15 @@ Regenerate with the `fetch-photos` workflow, or locally with
 | `rit-polisseni-ext` | [GenePolisseniCenter.JPG](https://commons.wikimedia.org/wiki/File:GenePolisseniCenter.JPG) | Msg2110 | CC BY-SA 4.0 |
 | `greece-ridge` | [Rochester_Mall_at_Greece_Ridge.jpg](https://commons.wikimedia.org/wiki/File:Rochester_Mall_at_Greece_Ridge.jpg) | Matthew D. Wilson (LtPowers) | CC BY-SA 2.5 |
 | `braddock-bay` | [Beatty_Points,_New_York.JPG](https://commons.wikimedia.org/wiki/File:Beatty_Points,_New_York.JPG) | Svino at English Wikipedia | Public domain |
+| `long-pond` | [Long Pond panorama from Lake Ontario State Parkway, Greece, New York - 20230326.jpg](https://commons.wikimedia.org/wiki/File:Long_Pond_panorama_from_Lake_Ontario_State_Parkway,_Greece,_New_York_-_20230326.jpg) | Andre Carrotflower | CC BY-SA 4.0 |
+| `greece-town-hall` | [Greece, New York town hall.jpg](https://commons.wikimedia.org/wiki/File:Greece,_New_York_town_hall.jpg) | DanielPenfield | CC BY-SA 3.0 |
 
 ## No free photo found
 
 These landmarks use hand-drawn pixel art instead:
 
-- `rit-campus`
 - `rit-sentinel`
 - `rit-sau`
-- `long-pond`
-- `greece-town-hall`
 - `greece-historical`
 - `schallers`
 - `braddock-bay-park`
