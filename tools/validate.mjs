@@ -77,6 +77,7 @@ for (const level of LEVELS) {
     features: doc.features,
     pois: level.pois,
     start: level.start,
+    buildingSlot: level.buildingSlot,
   });
 
   if (map.skipped.length) notes.push(`${level.id}: ignored feature kinds ${JSON.stringify(map.skipped)}`);

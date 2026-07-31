@@ -55,6 +55,7 @@ async function buildLevel(level) {
     pois: level.pois,
     start: level.start,
     walkSpeed: level.walkSpeed,
+    buildingSlot: level.buildingSlot,
     attribution: doc.source,
   });
 
@@ -511,13 +512,14 @@ class DepartureScene {
     screen.text(this.hub.name.slice(0, Math.floor(screen.w / 6) - 1), 4, 2, { slot: SLOT.UI, shade: 0 });
 
     let y = 16;
-    for (const line of wrapText(this.hub.blurb || '', screen.w - 12).slice(0, 2)) {
+    for (const line of wrapText(this.hub.blurb || '', screen.w - 12).slice(0, 4)) {
       screen.text(line, 6, y, { slot: SLOT.UI, shade: 2 });
       y += 9;
     }
 
-    const listY = y + 8;
-    box(screen, 2, listY - 5, screen.w - 4, screen.h - listY - 8);
+    const listY = y + 10;
+    const listH = Math.min(screen.h - listY - 6, this.routes.length * 18 + 12);
+    box(screen, 2, listY - 5, screen.w - 4, listH);
     this.menu.draw(screen, 14, listY, (r) => destinationName(r), { cursorTime: this.t, lineHeight: 18 });
     // The journey line sits under each destination, dimmer.
     const end = Math.min(this.menu.items.length, this.menu.top + this.menu.visible);

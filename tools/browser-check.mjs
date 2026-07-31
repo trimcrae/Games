@@ -116,6 +116,35 @@ await key('ShiftLeft'); // landmark list tab
 await page.waitForTimeout(400);
 await shot('11-landmark-list');
 
+await key('KeyX'); // leave the pause screen
+await page.waitForTimeout(400);
+
+// Travel: stand at the first hub and open its departure menu.
+const hub = await page.evaluate(() => {
+  const sys = globalThis.handheld;
+  const world = sys.stack[sys.stack.length - 1];
+  const h = world?.map?.hubs?.[0];
+  if (!h) return null;
+  world.x = h.postX;
+  world.y = h.postY;
+  return h.name;
+});
+await page.waitForTimeout(300);
+await shot('12-at-hub');
+if (hub) {
+  await key('KeyZ');
+  await page.waitForTimeout(600);
+  await shot('13-departures');
+  await key('KeyZ'); // depart
+  await page.waitForTimeout(1500);
+  await shot('14-cutscene');
+  await page.waitForTimeout(4000);
+  await shot('15-cutscene-late');
+  await key('KeyZ'); // skip to arrival
+  await page.waitForTimeout(2500);
+  await shot('16-arrived');
+}
+
 const state = await page.evaluate(() => {
   const sys = globalThis.handheld;
   return { look: sys.lookId, scenes: sys.stack.length, running: sys.running };
@@ -124,12 +153,13 @@ const state = await page.evaluate(() => {
 // Landscape, to prove the other layout works.
 await page.setViewportSize({ width: 900, height: 420 });
 await page.waitForTimeout(500);
-await shot('12-landscape');
+await shot('17-landscape');
 
 await browser.close();
 server.close();
 
 console.log(`nearest landmark: ${near}`);
+console.log(`hub: ${hub}`);
 console.log(`state: ${JSON.stringify(state)}`);
 if (problems.length) {
   console.error(`\n${problems.length} problem(s):`);

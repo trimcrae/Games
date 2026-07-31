@@ -38,6 +38,7 @@ export function buildLevel(level) {
     pois: level.pois,
     start: level.start,
     walkSpeed: level.walkSpeed,
+    buildingSlot: level.buildingSlot,
     attribution: doc.source,
   });
 }

@@ -212,26 +212,32 @@ function pitched(spr, slope) {
   return { w: spr.w, h, px: out };
 }
 
-// Airliner, nose to the right. The last two rows are the undercarriage, so a
-// gear-up blit is just the same sprite drawn two rows short.
+// Airliner, nose to the right, on the UI slot: 0 is the white hull, 1 the
+// shaded underside, 2 the window line, 3 the outline. The last two rows are the
+// undercarriage, so a gear-up blit is the same sprite drawn two rows short.
 const PLANE = sprite([
-  '..3333....................',
-  '..3113....................',
-  '.33113....................',
-  '.31113....................',
-  '.311113...................',
-  '.31111111111111111133.....',
-  '.3111111111111111111133...',
-  '.3111111111111111111113...',
-  '.33111111111111111111133..',
-  '..3311113311111111133.....',
-  '....33333..333333333......',
-  '.....3.......3.3..........',
-  '....333.....33.33.........',
+  '....3333........................',
+  '...330003.......................',
+  '...300003.......................',
+  '..3000003.......................',
+  '..30000003......................',
+  '.300000003......................',
+  '333000000000000000000000003.....',
+  '.30202020202020202020000002203..',
+  '.300000000000000000000000000003.',
+  '.31111111111111111111111111113..',
+  '..3111111111111111111111113.....',
+  '..............3111111113........',
+  '...........31111111113111113....',
+  '.........311111113...3111113....',
+  '........3333333......3333333....',
+  '...................3....3.......',
+  '..................333...333.....',
 ]);
 const PLANE_BODY_H = PLANE.h - 2; // airframe only, gear retracted
-const PLANE_CLIMB = pitched({ w: PLANE.w, h: PLANE_BODY_H, px: PLANE.px.subarray(0, PLANE.w * PLANE_BODY_H) }, 0.3);
-const PLANE_SINK = pitched(PLANE, -0.12);
+const PLANE_AIRFRAME = { w: PLANE.w, h: PLANE_BODY_H, px: PLANE.px.subarray(0, PLANE.w * PLANE_BODY_H) };
+const PLANE_CLIMB = pitched(PLANE_AIRFRAME, 0.22);
+const PLANE_SINK = pitched(PLANE, -0.1);
 
 // Saloon car seen from behind: blue body, dark glass, red lamps.
 const CAR = sprite([
@@ -439,25 +445,25 @@ class TravelCutscene {
 
   /** The caption strip grows a little on a taller screen, but never dominates. */
   bandHeight(screen) {
-    return Math.min(34, Math.max(24, Math.round(screen.h * 0.17)));
+    return Math.min(34, Math.max(24, Math.round(screen.h * 0.16)));
   }
 
   /** Sprites are drawn at 1:1 on a small screen and doubled on a large one. */
   scaleFor(screen) {
-    return Math.max(1, Math.min(2, Math.floor(screen.w / 200)));
+    return screen.w >= 232 ? 2 : 1;
   }
 
   drawCaption(screen, y, h) {
     const W = screen.w;
     box(screen, 0, y, W, h);
-    screen.text(this.headline.slice(0, Math.floor((W - 10) / 6)), 5, y + 5, { slot: SLOT.UI, shade: 3 });
-    screen.text(this.summary.slice(0, Math.floor((W - 10) / 6)), 5, y + 14, { slot: SLOT.UI, shade: 2 });
+    const room = Math.floor((W - 10) / 6);
+    screen.text(this.headline.slice(0, room), 5, y + 6, { slot: SLOT.UI, shade: 3 });
+    screen.text(this.summary.slice(0, room), 5, y + 15, { slot: SLOT.UI, shade: 2 });
 
-    // Progress along the journey, pinned to the foot of the box.
-    const barY = y + h - 6;
-    const barW = W - 10;
-    screen.fill(5, barY, barW, 2, px(SLOT.UI, 1));
-    screen.fill(5, barY, Math.round(barW * Math.min(1, this.t / this.total)), 2, px(SLOT.UI, 3));
+    // Progress along the journey, drawn over the box's top rule so it never
+    // fights the second line of text on a short screen.
+    screen.fill(0, y, W, 2, px(SLOT.UI, 1));
+    screen.fill(0, y, Math.round(W * Math.min(1, this.t / this.total)), 2, px(SLOT.UI, 3));
   }
 
   // --- flight --------------------------------------------------------------
@@ -515,14 +521,21 @@ class TravelCutscene {
       }
     }
 
-    // Dawn sits on the horizon at low level and burns off as you climb.
+    // Sun on the horizon at low level, burning off as you climb. It is dawn on
+    // the runway you leave and dusk on the one you land at, six hours east.
     const glow = Math.round((1 - alt) * SH * 0.13);
     if (glow > 2) {
+      const rim = this.arriving ? SLOT.ROOF : SLOT.GOLD;
       screen.fill(0, groundTop - glow, W, glow, px(SLOT.DEEP, 1));
       for (let x = 0; x < W; x += 2) screen.set(x, groundTop - glow, px(SLOT.NIGHT, 2));
-      screen.fill(0, groundTop - 3, W, 3, px(SLOT.GOLD, 1));
-      for (let x = 1; x < W; x += 2) screen.set(x, groundTop - 4, px(SLOT.GOLD, 1));
+      screen.fill(0, groundTop - 3, W, 3, px(rim, 1));
+      for (let x = 1; x < W; x += 2) screen.set(x, groundTop - 4, px(rim, 1));
     }
+  }
+
+  /** True once the journey is past halfway, i.e. approaching the far end. */
+  get arriving() {
+    return this.t > this.total * 0.55;
   }
 
   drawAirfield(screen, SH, groundTop, alt) {
@@ -589,9 +602,9 @@ class TravelCutscene {
       const cx = Math.round(W - (((this.scroll * (0.7 + 0.4 * hash(i))) + i * span * 0.31) % span));
       const cy = top + Math.round(hash(i * 7 + 2) * (SH * 0.38));
       if (cy > SH - 6) continue;
-      const shade = alt > 0.7 ? 1 : 2;
-      screen.fill(cx, cy, cw, 2, px(SLOT.UI, shade));
-      screen.fill(cx + 3, cy - 2, Math.max(2, cw - 8), 2, px(SLOT.UI, shade === 1 ? 0 : 1));
+      // Grey rather than white: the aircraft is the white thing on this screen.
+      screen.fill(cx, cy, cw, 2, px(SLOT.UI, 2));
+      screen.fill(cx + 3, cy - 2, Math.max(2, cw - 8), 2, px(SLOT.NIGHT, 1));
     }
   }
 
@@ -643,21 +656,22 @@ class TravelCutscene {
 
     // Contrails at height, tyre smoke on the ground.
     if (alt > 0.5) {
-      for (let i = 1; i < 7; i++) {
-        const tx = x - i * 5 * s;
-        if (tx < -4) break;
-        screen.fill(tx, y + Math.round(art.h * s * 0.55), 3, 1, px(SLOT.UI, i < 4 ? 1 : 2));
+      for (let i = 1; i < 8; i++) {
+        const tx = x - i * 6 * s;
+        if (tx < -6) break;
+        screen.fill(tx, y + Math.round(art.h * s * 0.62), 4 * s, 1, px(SLOT.UI, i < 4 ? 1 : 2));
       }
     } else if (ph.name === 'land' && ph.k < 0.45) {
       for (let i = 0; i < 6; i++) {
-        const pxx = x + Math.round(art.w * s * 0.5) + i * 4 * s;
-        screen.fill(pxx, wheelY - 2 - (i % 2), 3, 2, px(SLOT.UI, 2));
+        const smokeX = x + Math.round(art.w * s * 0.45) + i * 4 * s;
+        screen.fill(smokeX, wheelY - 2 - (i % 2) * 2, 3, 2, px(SLOT.UI, 2));
       }
     }
 
-    screen.blit(art.px, art.w, Math.min(art.h, bodyH), x, y, { slot: SLOT.CHAR, scale: s });
-    // Navigation strobe on the tail.
-    if (Math.floor(this.t * 6) % 2) screen.fill(x + 2 * s, y, 2 * s, 2 * s, px(SLOT.ACCENT, 0));
+    // The airframe is white, so it lives on the UI ramp rather than CHAR.
+    screen.blit(art.px, art.w, Math.min(art.h, bodyH), x, y, { slot: SLOT.UI, scale: s });
+    // Anti-collision strobe at the top of the fin.
+    if (Math.floor(this.t * 6) % 2) screen.fill(x + 5 * s, y, 2 * s, 2 * s, px(SLOT.ACCENT, 1));
   }
 
   // --- drive ---------------------------------------------------------------
@@ -673,6 +687,7 @@ class TravelCutscene {
     if (ph.name === 'ramp') bend += lerp(W * 0.4, 0, smooth(ph.k));
     if (ph.name === 'exit') bend -= lerp(0, W * 0.42, smooth(ph.k));
     const vpX = W / 2 + bend;
+    this.exitK = ph.name === 'exit' ? smooth(Math.min(1, ph.k * 1.4)) : 0;
 
     this.drawDriveSky(screen, SH, horizon);
     this.drawRoad(screen, SH, horizon, vpX);
@@ -692,15 +707,23 @@ class TravelCutscene {
       for (let x = (y & 1) * 3; x < W; x += 6) screen.set(x, y, px(SLOT.LAND, 3));
     }
 
-    // Tree line, in step with the road so the scenery does not stand still.
-    const period = 13;
-    const off = ((this.travel * 2.4) % period) + period;
-    for (let i = -1; i < Math.ceil(W / period) + 2; i++) {
-      const x = Math.round(i * period - off);
-      const seed = i + Math.floor((this.travel * 2.4) / period);
-      const h = 4 + Math.round(hash(seed) * 7);
-      const w = 4 + Math.round(hash(seed + 100) * 4);
-      screen.fill(x, horizon - h, w, h + 1, px(SLOT.TREE, 3));
+    // Tree line. Each tree keeps its own height as it slides past, which needs
+    // the hash seeded on its absolute index rather than its screen position.
+    const period = 11;
+    const scrolled = this.travel * 2.4;
+    const first = Math.floor(scrolled / period) - 1;
+    for (let i = 0; i < W / period + 3; i++) {
+      const idx = first + i;
+      const x = Math.round(idx * period - scrolled);
+      const h = 5 + Math.round(hash(idx) * 9);
+      const w = 5 + Math.round(hash(idx + 100) * 4);
+      screen.fill(x + 1, horizon - h + 1, w - 2, h, px(SLOT.TREE, 3));
+      screen.fill(x, horizon - h + 3, w, h - 3, px(SLOT.TREE, 3));
+      // Every so often a mast instead of a tree, to break the hedge look.
+      if (hash(idx + 7) > 0.86) {
+        screen.fill(x + 2, horizon - h - 7, 1, h + 7, px(SLOT.UI, 3));
+        screen.fill(x, horizon - h - 6, 5, 1, px(SLOT.UI, 3));
+      }
     }
     screen.hline(0, horizon, W, px(SLOT.LAND, 3));
   }
@@ -737,6 +760,22 @@ class TravelCutscene {
       if (world % 4 < 1.9) screen.fill(Math.round(cx - line), y, line * 2, 1, px(SLOT.ROAD, 0));
       // Rumble strip on the far shoulder, alternating so it flickers past.
       if (world % 6 < 3) screen.fill(Math.round(left - shoulder), y, Math.max(1, Math.round(shoulder * 0.5)), 1, px(SLOT.UI, 0));
+
+      // The off-ramp peels away from the mainline, but only near the camera:
+      // far away the two are still the same road.
+      if (this.exitK > 0) {
+        const near = Math.max(0, Math.min(1, (5 - z) / 4));
+        const rampCx = cx + W * 0.6 * this.exitK * near;
+        const rampHalf = half * 0.48;
+        if (near > 0.02) {
+          const rl = Math.round(rampCx - rampHalf);
+          const rw = Math.max(1, Math.round(rampHalf * 2));
+          screen.fill(Math.round(rl - shoulder * 0.6), y, Math.round(rw + shoulder * 1.2), 1, px(SLOT.SAND, 2));
+          screen.fill(rl, y, rw, 1, px(SLOT.ROAD, 2));
+          screen.fill(rl, y, line, 1, px(SLOT.ROAD, 0));
+          screen.fill(rl + rw - line, y, line, 1, px(SLOT.ROAD, 0));
+        }
+      }
     }
   }
 

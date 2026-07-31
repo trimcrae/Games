@@ -1,3 +1,5 @@
+import { SLOT } from '../../engine/gfx.js';
+
 // The three explorable places.
 //
 // Geometry comes from the committed OpenStreetMap extracts in data/osm; every
@@ -12,6 +14,7 @@ export const LEVELS = [
     subtitle: 'Palo Alto, California',
     data: 'data/osm/stanford.json',
     metersPerTile: 6,
+    buildingSlot: SLOT.WALL,
     bbox: [37.4235, -122.1775, 37.4375, -122.1595],
     start: [37.42832, -122.16968],
     walkSpeed: 54,
@@ -113,6 +116,7 @@ export const LEVELS = [
     subtitle: 'Henrietta, New York',
     data: 'data/osm/rit.json',
     metersPerTile: 6,
+    buildingSlot: SLOT.BRICK,
     bbox: [43.0795, -77.6865, 43.0905, -77.6675],
     start: [43.08432, -77.67703],
     walkSpeed: 54,
