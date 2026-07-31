@@ -22,8 +22,23 @@ export const SLOT = {
   TREE: 7,
   CHAR: 8,
   ACCENT: 9,
+  BRICK: 10,
+  TURF: 11,
+  CONCRETE: 12,
+  DEEP: 13,
+  NIGHT: 14,
+  GOLD: 15,
 };
-export const SLOT_COUNT = 10;
+export const SLOT_COUNT = 16;
+
+/**
+ * Framebuffer bytes 0..63 are the 16 art slots above. Everything from 64 up is
+ * a free palette that a scene can install for one image - that is where the
+ * photographic landmark panels live, giving them Game Boy Advance-era colour
+ * depth while the world keeps its four-shades-per-slot discipline.
+ */
+export const IMAGE_BASE = SLOT_COUNT * 4;
+export const IMAGE_MAX = 256 - IMAGE_BASE;
 
 /** Compose a framebuffer byte. */
 export const px = (slot, shade) => ((slot << 2) | (shade & 3)) & 0xff;
@@ -59,7 +74,8 @@ export const LOOKS = {
   },
   color: {
     name: 'COLOR',
-    note: 'Game Boy Color',
+    note: 'full colour',
+    colour: true,
     slots: [
       ramp('#f8f8f0', '#b8b8a8', '#606060', '#181818'), // UI
       ramp('#d8e878', '#88c040', '#3d8028', '#1d4a18'), // LAND
@@ -71,6 +87,12 @@ export const LOOKS = {
       ramp('#a8d868', '#4a9030', '#2c6820', '#143810'), // TREE
       ramp('#f8d8b0', '#e05840', '#2848a0', '#181818'), // CHAR
       ramp('#fff0a0', '#f0c020', '#a86818', '#402c08'), // ACCENT
+      ramp('#e8a882', '#c06848', '#8c3c2c', '#4c1c18'), // BRICK
+      ramp('#c8e878', '#7cc040', '#3c8830', '#1c4c1c'), // TURF
+      ramp('#f0f0e8', '#c4c4bc', '#8c8c88', '#4c4c4c'), // CONCRETE
+      ramp('#5088c8', '#2c5ca0', '#183c78', '#0c1c40'), // DEEP
+      ramp('#8898c8', '#48588c', '#283048', '#101018'), // NIGHT
+      ramp('#fff4c0', '#f0cc50', '#b08820', '#5c4008'), // GOLD
     ],
     shell: { case: '#5a3fa0', screen: '#2a1c50', accent: '#e8c020' },
   },
@@ -98,22 +120,58 @@ function rgba(hex) {
   return LITTLE_ENDIAN ? (255 << 24) | (b << 16) | (g << 8) | r : (r << 24) | (g << 16) | (b << 8) | 255;
 }
 
-/** Build the 256-entry framebuffer-byte -> RGBA lookup for a look. */
-export function buildLUT(look) {
+/** Relative luminance of a hex colour, 0..1. */
+export function luma(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * Build the 256-entry framebuffer-byte -> RGBA lookup for a look.
+ * @param {object} look
+ * @param {string[]} [imagePalette] colours for the image region (byte 64 up).
+ *   On a monochrome look these are folded down to the look's own four shades by
+ *   luminance, so one colour panel serves every screen.
+ */
+export function buildLUT(look, imagePalette = null) {
   const lut = new Uint32Array(256);
   for (let slot = 0; slot < SLOT_COUNT; slot++) {
     const colours = look.slots[slot] || look.slots[0];
     for (let shade = 0; shade < 4; shade++) lut[px(slot, shade)] = rgba(colours[shade]);
   }
-  // Anything above the defined slots falls back into the defined range.
-  for (let b = SLOT_COUNT * 4; b < 256; b++) lut[b] = lut[b % (SLOT_COUNT * 4)];
+
+  const uiRamp = look.slots[SLOT.UI];
+  const monochrome = look.monochrome !== false && !look.colour;
+  for (let i = 0; i < IMAGE_MAX; i++) {
+    const hex = imagePalette?.[i];
+    if (!hex) {
+      lut[IMAGE_BASE + i] = lut[px(SLOT.UI, 0)];
+    } else if (monochrome) {
+      const shade = Math.min(3, Math.max(0, Math.round((1 - luma(hex)) * 3)));
+      lut[IMAGE_BASE + i] = rgba(uiRamp[shade]);
+    } else {
+      lut[IMAGE_BASE + i] = rgba(hex);
+    }
+  }
   return lut;
 }
 
+const hexToRGB = (hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+
 /** Return the RGB triplet for a framebuffer byte under a look (for tooling). */
-export function rgbOf(look, byte) {
-  const hex = (look.slots[(byte >> 2) & (SLOT_COUNT - 1)] || look.slots[0])[byte & 3];
-  return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+export function rgbOf(look, byte, imagePalette = null) {
+  if (byte >= IMAGE_BASE) {
+    const hex = imagePalette?.[byte - IMAGE_BASE];
+    if (!hex) return hexToRGB(look.slots[SLOT.UI][0]);
+    if (look.colour) return hexToRGB(hex);
+    const shade = Math.min(3, Math.max(0, Math.round((1 - luma(hex)) * 3)));
+    return hexToRGB(look.slots[SLOT.UI][shade]);
+  }
+  // Slot count is not a power of two, so this has to be a modulo, not a mask.
+  const hex = (look.slots[(byte >> 2) % SLOT_COUNT] || look.slots[0])[byte & 3];
+  return hexToRGB(hex);
 }
 
 import { glyph, GLYPH_W, GLYPH_H, ADVANCE } from './font.js';
@@ -196,15 +254,17 @@ export class Screen {
    * TRANSPARENT (4) is skipped.
    */
   blit(data, w, h, dx, dy, opts = {}) {
-    const { slot = 0, flipX = false, flipY = false, scale = 1, tint = null } = opts;
-    const base = slot << 2;
+    const { slot = 0, flipX = false, flipY = false, scale = 1, tint = null, raw = false } = opts;
+    // `raw` means the data already holds absolute framebuffer bytes, which is
+    // how full-colour image panels are drawn.
+    const base = raw ? 0 : slot << 2;
     for (let j = 0; j < h; j++) {
       const sy = flipY ? h - 1 - j : j;
       for (let i = 0; i < w; i++) {
         const sx = flipX ? w - 1 - i : i;
         const v = data[sy * w + sx];
-        if (v === TRANSPARENT || v === undefined) continue;
-        const byte = tint === null ? base | (v & 3) : tint;
+        if (v === undefined || (!raw && v === TRANSPARENT)) continue;
+        const byte = tint !== null ? tint : raw ? v : base | (v & 3);
         if (scale === 1) this.set(dx + i, dy + j, byte);
         else this.fill(dx + i * scale, dy + j * scale, scale, scale, byte);
       }

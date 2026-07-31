@@ -22,7 +22,7 @@ export class Scene {
 }
 
 export class Handheld {
-  constructor({ canvas, width = 160, height = 144, look = 'dmg' }) {
+  constructor({ canvas, width = 160, height = 144, look = 'color' }) {
     this.canvas = canvas;
     this.screen = new Screen(width, height);
     this.input = new Input();
@@ -52,7 +52,7 @@ export class Handheld {
   setLook(id) {
     this.lookId = LOOKS[id] ? id : 'dmg';
     this.look = LOOKS[this.lookId];
-    this.baseLUT = buildLUT(this.look);
+    this.baseLUT = buildLUT(this.look, this.imagePalette);
     this.lut = this.baseLUT;
     this.settings.set('look', this.lookId);
     this.applyFade(this.fade);
@@ -85,6 +85,18 @@ export class Handheld {
     }
     for (let b = SLOT_COUNT * 4; b < 256; b++) lut[b] = lut[b % (SLOT_COUNT * 4)];
     this.lut = lut;
+  }
+
+  /**
+   * Install the colour table an image panel needs (or null to clear it).
+   * Only one image is on screen at a time, which is what makes 192 free
+   * palette entries enough.
+   */
+  setImagePalette(palette) {
+    this.imagePalette = palette || null;
+    this.baseLUT = buildLUT(this.look, this.imagePalette);
+    this.applyFade(this.fade);
+    if (!this.fade) this.lut = this.baseLUT;
   }
 
   toggleSound() {

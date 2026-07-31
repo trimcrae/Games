@@ -18,7 +18,9 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { PHOTOS, PANEL } from './photos.mjs';
 import { quantize, readPGM } from './pixelize.mjs';
-import { packIndices } from '../engine/art.js';
+import { quantizeColor } from './quantize.mjs';
+import { encodePNG } from './png.mjs';
+import { packIndices, packBytes } from '../engine/art.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = resolve(ROOT, 'data/photos');
@@ -27,6 +29,9 @@ const UA = 'games-handheld-artbuilder/1.0 (https://github.com/trimcrae/games; pi
 
 const FREE = /^(cc0|cc[ -]by([ -]sa)?([ -][\d.]+)?|public domain|pd([ -]|$)|no restrictions|attribution)/i;
 const NONFREE = /(fair use|non[- ]free|copyrighted|all rights reserved)/i;
+
+/** Words too common to prove a search hit is on topic. */
+const GENERIC = new Set(['york', 'university', 'college', 'institute', 'technology', 'school', 'building', 'center', 'centre', 'county', 'state', 'united', 'states', 'city', 'town', 'park', 'street', 'road', 'high', 'monroe', 'rochester', 'stanford', 'greece', 'from', 'view']);
 
 const strip = (s = '') =>
   String(s)
@@ -63,16 +68,27 @@ async function resolveImage(entry) {
 
   if (entry.file) candidates.unshift(entry.file.startsWith('File:') ? entry.file : `File:${entry.file}`);
 
-  if (entry.search) {
+  for (const query of [].concat(entry.search || [])) {
     try {
       const j = await api('commons.wikimedia.org', {
         action: 'query',
         list: 'search',
-        srsearch: `${entry.search} filetype:bitmap`,
+        srsearch: `${query} filetype:bitmap`,
         srnamespace: '6',
         srlimit: '12',
       });
-      for (const hit of j?.query?.search || []) candidates.push(hit.title);
+      // Commons search will happily return a scan of the Iliad for a query
+      // about Greece Athena High School, so a hit has to actually name
+      // something we asked for.
+      const terms = query
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .split(/\s+/)
+        .filter((t) => t.length > 3 && !GENERIC.has(t));
+      for (const hit of j?.query?.search || []) {
+        const title = hit.title.toLowerCase();
+        if (!terms.length || terms.some((t) => title.includes(t))) candidates.push(hit.title);
+      }
     } catch (err) {
       console.log(`    commons search failed: ${err.message}`);
     }
@@ -134,6 +150,12 @@ function magick(args) {
   return execFileSync(MAGICK, args, { maxBuffer: 1 << 28 });
 }
 
+/** The shipped tone curve. Kept here so the retune tool and CI agree. */
+export const TONE = { mode: 'floyd', contrast: 1.45, gamma: 1.15 };
+
+/** Colour panels: an adaptive palette this size, error-diffused. */
+export const COLOUR = { colors: 96, contrast: 1.32, gamma: 1.06, saturation: 1.22 };
+
 /** Larger working copy kept in the repo so tone curves can be retuned offline. */
 const SRC = { w: 256, h: 176 };
 
@@ -150,14 +172,13 @@ async function convert(entry, imageUrl) {
         magick([
           src,
           '-auto-orient',
-          '-colorspace', 'Gray',
           '-resize', `${w}x${h}^`,
           '-gravity', gravity,
           '-extent', `${w}x${h}`,
           '-normalize',
           '-unsharp', '0x1+1.0+0',
           '-depth', '8',
-          'pgm:-',
+          'ppm:-',
         ]),
       ),
     );
@@ -192,27 +213,27 @@ async function run() {
     console.log(`    ${found.credit.license} - ${found.credit.artist}`);
     try {
       const { panel, source } = await convert(entry, found.url);
-      const { w, h, gray } = panel;
+      const { w, h, gray, rgb } = panel;
       const tune = entry.tune || {};
+      const colour = quantizeColor(rgb, w, h, { ...COLOUR, ...(entry.colour || {}) });
       const doc = {
         id: entry.id,
         w,
         h,
         credit: found.credit,
-        // Both dither styles are kept so the look can be chosen without refetching.
-        bits: packIndices(quantize(gray, w, h, { mode: 'bayer', ...tune })),
-        bitsFloyd: packIndices(quantize(gray, w, h, { mode: 'floyd', ...tune })),
+        // Full-colour panel: adaptive palette, error-diffused.
+        pal: colour.pal,
+        bits8: packBytes(colour.px),
+        // 4-shade version for the monochrome screens.
+        bits: packIndices(quantize(gray, w, h, { ...TONE, ...tune })),
       };
       await writeFile(resolve(OUT_DIR, `${entry.id}.json`), JSON.stringify(doc));
-      // Build-time only: the greyscale source, so tone curves can be retuned
-      // without going back to the network.
+      // Build-time only: a larger colour working copy, so palettes and tone
+      // curves can be retuned offline without going back to the network.
       await mkdir(SRC_DIR, { recursive: true });
-      await writeFile(
-        resolve(SRC_DIR, `${entry.id}.json`),
-        JSON.stringify({ id: entry.id, w: source.w, h: source.h, gray: Buffer.from(source.gray).toString('base64') }),
-      );
+      await writeFile(resolve(SRC_DIR, `${entry.id}.png`), encodePNG(source.w, source.h, source.rgb));
       ok.push({ id: entry.id, ...found.credit });
-      console.log(`    wrote ${w}x${h} panel`);
+      console.log(`    wrote ${w}x${h} panel, ${colour.pal.length} colours`);
     } catch (err) {
       console.log(`    convert failed: ${err.message}`);
       missing.push(entry.id);

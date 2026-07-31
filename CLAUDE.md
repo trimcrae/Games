@@ -45,3 +45,25 @@ source, license, and fetch date in `data/<set>/SOURCES.md`.
 - Art is authored as data (tile strings, draw-op lists), never as binary blobs
   checked in by hand.
 - Work happens on the branch named in the session brief; push there.
+
+## Standing directive: merge to `main` freely
+
+The repo owner has given blanket approval to merge work into `main` without
+asking, as often as makes sense — this is a personal project and `main` is what
+GitHub Pages publishes. Do not sit on finished work waiting for permission.
+
+- Land changes on the feature branch, then fast-forward or merge into `main` and
+  push, whenever a change is coherent and the site still runs.
+- No pull request is needed for this. (Only open one if explicitly asked.)
+- The one precondition is that it works: `node tools/validate.mjs` passes and the
+  page still boots in a browser check before merging.
+
+## Look and art decisions (settled)
+
+- Default screen is **colour**, targeting Game Boy Advance-level colour depth
+  rather than the 4-shade DMG palette. The mono looks stay selectable.
+- Landmark panels are **photo-derived only**, using error-diffused (Floyd-
+  Steinberg) dithering over a lifted contrast curve. A landmark with no freely
+  licensed photograph does not ship as a landmark.
+- Hand-drawn panels remain in the tree as a runtime fallback and for cover art,
+  not as the primary style.

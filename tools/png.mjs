@@ -1,7 +1,7 @@
 // Minimal PNG encoder (truecolour, no filtering) so sample renders and CI
 // screenshots can be produced with nothing but Node's zlib.
 
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -88,5 +88,95 @@ export function montage(images, cols, gap = 8, bg = [24, 24, 24]) {
       }
     }
   });
+  return { w, h, rgb };
+}
+
+/**
+ * Decode a truecolour or greyscale PNG (no interlacing) into { w, h, rgb }.
+ * Enough to read back the working copies this tool writes, which is all the
+ * offline retuning loop needs.
+ */
+export function decodePNG(buf) {
+  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
+  let pos = 8;
+  let w = 0;
+  let h = 0;
+  let depth = 8;
+  let colourType = 2;
+  const idat = [];
+  let palette = null;
+
+  while (pos < buf.length) {
+    const len = buf.readUInt32BE(pos);
+    const type = buf.toString('ascii', pos + 4, pos + 8);
+    const data = buf.subarray(pos + 8, pos + 8 + len);
+    if (type === 'IHDR') {
+      w = data.readUInt32BE(0);
+      h = data.readUInt32BE(4);
+      depth = data[8];
+      colourType = data[9];
+      if (data[12] !== 0) throw new Error('interlaced PNG not supported');
+    } else if (type === 'PLTE') {
+      palette = data;
+    } else if (type === 'IDAT') {
+      idat.push(data);
+    } else if (type === 'IEND') {
+      break;
+    }
+    pos += 12 + len;
+  }
+  if (depth !== 8) throw new Error(`unsupported bit depth ${depth}`);
+
+  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colourType];
+  if (!channels) throw new Error(`unsupported colour type ${colourType}`);
+
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = w * channels;
+  const out = Buffer.alloc(h * stride);
+
+  for (let y = 0; y < h; y++) {
+    const filter = raw[y * (stride + 1)];
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    const prev = y > 0 ? out.subarray((y - 1) * stride, y * stride) : null;
+    const cur = out.subarray(y * stride, (y + 1) * stride);
+    for (let i = 0; i < stride; i++) {
+      const a = i >= channels ? cur[i - channels] : 0;
+      const b = prev ? prev[i] : 0;
+      const c = prev && i >= channels ? prev[i - channels] : 0;
+      let v = line[i];
+      switch (filter) {
+        case 0: break;
+        case 1: v += a; break;
+        case 2: v += b; break;
+        case 3: v += (a + b) >> 1; break;
+        case 4: {
+          const p = a + b - c;
+          const pa = Math.abs(p - a);
+          const pb = Math.abs(p - b);
+          const pc = Math.abs(p - c);
+          v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+          break;
+        }
+        default: throw new Error(`unknown PNG filter ${filter}`);
+      }
+      cur[i] = v & 0xff;
+    }
+  }
+
+  const rgb = new Uint8Array(w * h * 3);
+  for (let i = 0; i < w * h; i++) {
+    if (colourType === 2 || colourType === 6) {
+      rgb[i * 3] = out[i * channels];
+      rgb[i * 3 + 1] = out[i * channels + 1];
+      rgb[i * 3 + 2] = out[i * channels + 2];
+    } else if (colourType === 3) {
+      const p = out[i] * 3;
+      rgb[i * 3] = palette[p];
+      rgb[i * 3 + 1] = palette[p + 1];
+      rgb[i * 3 + 2] = palette[p + 2];
+    } else {
+      rgb[i * 3] = rgb[i * 3 + 1] = rgb[i * 3 + 2] = out[i * channels];
+    }
+  }
   return { w, h, rgb };
 }

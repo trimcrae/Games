@@ -64,7 +64,7 @@ export function quantize(gray, w, h, opts = {}) {
   return out;
 }
 
-/** Parse a binary PGM (P5) produced by ImageMagick. */
+/** Parse a binary PGM (P5) or PPM (P6) produced by ImageMagick. */
 export function readPGM(buf) {
   let pos = 0;
   const token = () => {
@@ -81,14 +81,27 @@ export function readPGM(buf) {
     return String.fromCharCode(...buf.subarray(start, pos));
   };
   const magic = token();
-  if (magic !== 'P5') throw new Error(`expected P5 PGM, got "${magic}"`);
+  if (magic !== 'P5' && magic !== 'P6') throw new Error(`expected P5/P6 netpbm, got "${magic}"`);
+  const channels = magic === 'P6' ? 3 : 1;
   const w = parseInt(token(), 10);
   const h = parseInt(token(), 10);
   const max = parseInt(token(), 10);
   pos++; // single whitespace before the raster
-  const data = buf.subarray(pos, pos + w * h);
-  if (data.length < w * h) throw new Error('truncated PGM');
+  const need = w * h * channels;
+  const data = buf.subarray(pos, pos + need);
+  if (data.length < need) throw new Error('truncated netpbm');
+  const scale = (v) => (max === 255 ? v : Math.round((v / max) * 255));
+
+  if (channels === 1) {
+    const gray = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) gray[i] = scale(data[i]);
+    return { w, h, gray };
+  }
+  const rgb = new Uint8Array(need);
+  for (let i = 0; i < need; i++) rgb[i] = scale(data[i]);
   const gray = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) gray[i] = max === 255 ? data[i] : Math.round((data[i] / max) * 255);
-  return { w, h, gray };
+  for (let i = 0; i < w * h; i++) {
+    gray[i] = Math.round(0.2126 * rgb[i * 3] + 0.7152 * rgb[i * 3 + 1] + 0.0722 * rgb[i * 3 + 2]);
+  }
+  return { w, h, rgb, gray };
 }

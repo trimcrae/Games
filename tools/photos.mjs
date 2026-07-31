@@ -22,16 +22,23 @@ export const PHOTOS = [
   { id: 'cantor-arts', wiki: 'Cantor Arts Center', search: 'Cantor Arts Center Stanford' },
   { id: 'rodin-garden', search: 'Rodin Sculpture Garden Stanford Gates of Hell' },
   { id: 'stanford-stadium', wiki: 'Stanford Stadium', search: 'Stanford Stadium' },
-  { id: 'stanford-dish', wiki: 'Stanford Dish', search: 'Stanford Dish radio telescope' },
+  { id: 'stanford-dish', wiki: 'Stanford Dish', search: ['Stanford Dish radio telescope', 'Stanford Dish antenna'] },
+  { id: 'white-plaza', search: ['White Plaza Stanford', 'Stanford bookstore plaza'] },
+  { id: 'engineering-quad', search: ['Huang Engineering Center Stanford', 'Stanford engineering quad'] },
 
   // --- RIT -----------------------------------------------------------------
   { id: 'rit-campus', wiki: 'Rochester Institute of Technology', search: 'Rochester Institute of Technology campus' },
-  { id: 'rit-sentinel', search: 'Sentinel Albert Paley Rochester Institute of Technology' },
+  { id: 'rit-sentinel', search: ['Sentinel Paley sculpture', 'Albert Paley Sentinel', 'Paley sculpture Rochester'] },
+  { id: 'rit-sau', search: ['Student Alumni Union RIT', 'RIT Student Alumni Union'] },
+  { id: 'rit-golisano', search: ['Golisano College computing RIT', 'Golisano Hall RIT'] },
+  { id: 'rit-tiger', search: ['RIT Tiger statue', 'Tiger statue Rochester Institute'] },
+  { id: 'rit-quarter-mile', search: ['RIT Quarter Mile', 'RIT campus quad brick'] },
   { id: 'rit-polisseni', wiki: 'Gene Polisseni Center', search: 'Gene Polisseni Center' },
   { id: 'rit-field-house', search: 'Gordon Field House RIT' },
   { id: 'rit-library', search: 'Wallace Library Rochester Institute of Technology' },
   { id: 'rit-global-village', search: 'Global Village Rochester Institute of Technology' },
-  { id: 'rit-ntid', wiki: 'National Technical Institute for the Deaf', search: 'NTID Rochester Institute of Technology building' },
+  { id: 'rit-ntid', wiki: 'National Technical Institute for the Deaf', search: ['NTID Rochester Institute', 'National Technical Institute Deaf building'] },
+  { id: 'rit-polisseni-ext', search: ['Polisseni Center exterior', 'Gene Polisseni'] },
 
   // --- Greece, NY ----------------------------------------------------------
   { id: 'greece-ridge', wiki: 'The Mall at Greece Ridge', search: 'Mall at Greece Ridge' },

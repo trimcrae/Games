@@ -63,14 +63,18 @@ async function buildLevel(level) {
 }
 
 /** Photo panel if one exists and photos are switched on, else the drawing. */
-async function landmarkArt(poi, style) {
-  if (style !== 'drawn' && poi.photo) {
+async function landmarkArt(poi, colour) {
+  if (poi.photo) {
     try {
       const doc = await loadJSON(`data/photos/${poi.photo}.json`);
-      const bits = style === 'diffused' && doc.bitsFloyd ? doc.bitsFloyd : doc.bits;
-      return { w: doc.w, h: doc.h, bits, credit: `${doc.credit.artist} / ${doc.credit.license}` };
-    } catch {
-      /* fall through to the drawing */
+      const credit = `${doc.credit.artist} / ${doc.credit.license}`;
+      // Colour screens get the full palette; the monochrome screens get the
+      // four-shade version, which was dithered for exactly that.
+      return colour && doc.pal
+        ? { w: doc.w, h: doc.h, pal: doc.pal, bits8: doc.bits8, credit }
+        : { w: doc.w, h: doc.h, bits: doc.bits, credit };
+    } catch (err) {
+      console.warn(`landmark art fell back to a drawing: ${err.message}`);
     }
   }
   return ART[poi.art] || ART.placeholder;
@@ -87,17 +91,26 @@ class LoadingScene {
     this.error = null;
   }
 
-  enter(sys) {
+  enter() {
+    // The result is stashed rather than acted on: this scene is usually pushed
+    // by a transition that is still running, and a second transition started
+    // while the first is mid-fade would be dropped on the floor.
     this.work()
-      .then((result) => sys.transitionTo((s) => this.then(s, result), { duration: 0.24 }))
+      .then((result) => {
+        this.result = result;
+      })
       .catch((err) => {
         console.error(err);
         this.error = String(err.message || err);
       });
   }
 
-  update(dt) {
+  update(dt, sys) {
     this.t += dt;
+    if (this.result && !this.handedOver && !sys.transition) {
+      this.handedOver = true;
+      sys.transitionTo((s) => this.then(s, this.result), { duration: 0.24 });
+    }
   }
 
   draw(screen) {
@@ -401,10 +414,15 @@ class LandmarkScene {
   enter(sys) {
     this.text = new TextBox(this.poi.text, { width: sys.screen.w - 12, lines: 3, speed: 52 });
     if (this.isNew) SFX.found(sys.audio);
-    landmarkArt(this.poi, sys.settings.get('art', 'photo')).then((art) => {
+    landmarkArt(this.poi, Boolean(sys.look.colour)).then((art) => {
       this.art = art;
       this.credit = art.credit || '';
+      if (art.pal) sys.setImagePalette(art.pal);
     });
+  }
+
+  exit(sys) {
+    sys.setImagePalette(null);
   }
 
   update(dt, sys) {
@@ -429,20 +447,25 @@ class LandmarkScene {
     screen.fill(0, 0, screen.w, 11, px(SLOT.UI, 3));
     screen.text(this.poi.name.slice(0, 25), 4, 2, { slot: SLOT.UI, shade: 0 });
 
+    const artY = 12;
     if (this.art) {
-      const a = drawPanel(screen, this.art, Math.round((screen.w - this.art.w) / 2), 14, { slot: SLOT.UI });
+      const a = drawPanel(screen, this.art, Math.round((screen.w - this.art.w) / 2), artY, { slot: SLOT.UI });
       if (this.credit) {
-        screen.text(this.credit.slice(0, 26), 4, 16 + (a?.h || 88), { slot: SLOT.UI, shade: 1 });
+        // Captioned over the foot of the picture: there is no room for a
+        // separate line between an 88px panel and the text box.
+        const cy = artY + (a?.h || 88) - 8;
+        screen.fill(0, cy - 1, screen.w, 9, px(SLOT.UI, 0));
+        screen.text(this.credit.slice(0, 26), 4, cy, { slot: SLOT.UI, shade: 2 });
       }
     } else {
-      box(screen, 14, 14, screen.w - 28, 88);
+      box(screen, 14, artY, screen.w - 28, 88);
       screen.textCentred('...', 54, { slot: SLOT.UI, shade: 2 });
     }
 
-    const boxY = screen.h - 36;
-    box(screen, 0, boxY, screen.w, 36);
-    this.text.draw(screen, 6, boxY + 5);
-    this.text.drawMore(screen, screen.w - 12, boxY + 26, this.t);
+    const boxY = screen.h - 40;
+    box(screen, 0, boxY, screen.w, 40);
+    this.text.draw(screen, 6, boxY + 6);
+    this.text.drawMore(screen, screen.w - 12, boxY + 31, this.t);
   }
 }
 

@@ -40,13 +40,14 @@ body {
 
 .hh {
   --pad: clamp(8px, 2.2vmin, 18px);
-  width: min(100vw, 560px);
+  width: min(100vw, 480px);
   height: 100dvh;
   max-height: 100dvh;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   padding: var(--pad);
-  gap: var(--pad);
+  gap: clamp(10px, 3vmin, 26px);
   background: var(--hh-case);
   background-image: linear-gradient(160deg, var(--hh-case-light), var(--hh-case) 38%, var(--hh-case-dark));
   border-radius: 12px 12px 44px 12px;
@@ -159,8 +160,7 @@ body {
 /* --- controls ----------------------------------------------------------- */
 
 .hh-controls {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
   display: grid;
   grid-template-areas:
     "dpad ab"

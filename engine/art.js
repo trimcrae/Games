@@ -235,14 +235,31 @@ export function rasterizeOps(ops, w, h, bg = 0) {
   return r.px;
 }
 
+/** Unpack a full byte-per-pixel base64 buffer (colour image panels). */
+export function unpackBytes(b64, count) {
+  const bytes = fromBase64(b64);
+  return bytes.length === count ? bytes : bytes.subarray(0, count);
+}
+
+/** Pack a Uint8Array of arbitrary byte values. */
+export function packBytes(px) {
+  return toBase64(px);
+}
+
 /**
- * Normalize any art description into { w, h, px }.
- * Accepts { w, h, bits } (packed) or { w, h, ops, bg } (hand-drawn).
+ * Normalize any art description into { w, h, px, mode }.
+ * Accepts:
+ *   { w, h, pal, bits8 }  full-colour panel, px are palette indices
+ *   { w, h, bits }        4-shade panel, px are shades 0..3
+ *   { w, h, ops, bg }     hand-drawn panel, rasterized on the spot
  */
 export function decodeArt(art) {
   if (!art) return null;
   if (art.px) return art;
   const { w, h } = art;
+  if (art.bits8 && art.pal) {
+    return { w, h, px: unpackBytes(art.bits8, w * h), pal: art.pal, mode: 'image', credit: art.credit };
+  }
   const px = art.bits ? unpackIndices(art.bits, w * h) : rasterizeOps(art.ops || [], w, h, art.bg ?? 0);
-  return { w, h, px, credit: art.credit };
+  return { w, h, px, mode: 'shades', credit: art.credit };
 }

@@ -1,6 +1,6 @@
 // Shared UI furniture: boxes, menus, and the typewriter text box.
 
-import { SLOT, px, wrapText } from './gfx.js';
+import { SLOT, px, wrapText, IMAGE_BASE } from './gfx.js';
 import { ICON } from './font.js';
 import { decodeArt } from './art.js';
 
@@ -156,12 +156,23 @@ export class Menu {
   }
 }
 
-/** Draw an art panel (hand-drawn or photo-derived) with a border. */
+/**
+ * Draw an art panel with a border. Colour panels index the console's image
+ * palette region, so the caller must have installed the palette first.
+ */
 export function drawPanel(screen, art, x, y, { slot = SLOT.UI, border = true } = {}) {
   const a = decodeArt(art);
   if (!a) return null;
   if (border) screen.frame(x - 1, y - 1, a.w + 2, a.h + 2, px(slot, 3));
-  screen.blit(a.px, a.w, a.h, x, y, { slot });
+  if (a.mode === 'image') {
+    if (!a.offsetPx) {
+      a.offsetPx = new Uint8Array(a.px.length);
+      for (let i = 0; i < a.px.length; i++) a.offsetPx[i] = IMAGE_BASE + a.px[i];
+    }
+    screen.blit(a.offsetPx, a.w, a.h, x, y, { raw: true });
+  } else {
+    screen.blit(a.px, a.w, a.h, x, y, { slot });
+  }
   return a;
 }
 
