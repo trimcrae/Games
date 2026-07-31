@@ -592,13 +592,13 @@ class LandmarkScene {
     screen.fill(0, 0, screen.w, headerH, px(SLOT.UI, 3));
     screen.text(this.poi.name.slice(0, Math.floor(screen.w / 6) - 1), 4, 2, { slot: SLOT.UI, shade: 0 });
 
-    // The picture gets the whole screen below the header and the text box sits
-    // on top of it. Stacking them instead would mean either a postage stamp on
-    // a small screen or two lines of caption on a large one.
+    // The picture is centred in what is actually visible - between the header
+    // and the text box - rather than in the whole screen, which would push it
+    // behind the caption and leave a band of empty paper above it.
     const boxH = LandmarkScene.lineCount(screen.h) * 9 + 13;
     const boxY = screen.h - boxH;
     const artTop = headerH;
-    const artBox = { w: screen.w, h: screen.h - artTop };
+    const artBox = { w: screen.w, h: boxY - artTop };
 
     if (this.art) {
       const scale = fitScale(this.art, artBox.w, artBox.h);
@@ -612,7 +612,9 @@ class LandmarkScene {
       drawPanel(screen, this.art, ax, ay, { slot: SLOT.UI, scale, border: false });
       screen.noClip();
       if (this.credit) {
-        const cy = boxY - 9;
+        // Tucked under the picture, or over its foot when the picture is
+        // taller than the space and had to be cropped.
+        const cy = Math.min(boxY - 9, ay + ah + 1);
         screen.fill(0, cy - 1, screen.w, 9, px(SLOT.UI, 0));
         screen.text(this.credit.slice(0, Math.floor(screen.w / 6) - 1), 3, cy, { slot: SLOT.UI, shade: 2 });
       }
