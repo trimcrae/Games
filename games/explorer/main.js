@@ -610,12 +610,15 @@ export class WorldScene {
     }
     if (this.rack) {
       if (!this.hasBike) {
+        // The first one you find puts you straight on it; after that A at a
+        // rack is just somewhere to leave it.
         this.hasBike = true;
         SFX.found(sys.audio);
-        this.say('GOT A BIKE - SELECT');
+        this.say('GOT A BIKE!');
         this.mount(sys, true);
       } else if (this.riding) {
         this.dismount(sys);
+        this.say('SELECT TO RIDE');
       } else {
         this.mount(sys);
       }

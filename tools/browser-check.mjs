@@ -2,6 +2,11 @@
 // Drive the real page in Chromium: boot, load the cartridge, walk, open a
 // landmark. Fails loudly on any console error or unhandled rejection.
 //
+// This is the smoke test - it proves the page boots and the browser plumbing
+// (canvas, keyboard, fetch, audio unlock) is wired up. The deep play tests, on
+// reachability, collision and layout, run without a browser in
+// tools/playtest.mjs; keep new gameplay assertions there where they are cheap.
+//
 //   node tools/browser-check.mjs [outdir]
 
 import { chromium } from 'playwright';
@@ -79,11 +84,29 @@ await key('KeyZ'); // choose Stanford
 await page.waitForTimeout(3500);
 await shot('05-world');
 
-// Walk about a bit, then look for the nearest landmark prompt.
-await hold('ArrowDown', 700);
-await hold('ArrowRight', 700);
+/** What the live world scene thinks is going on, or null if there is not one. */
+const worldState = () =>
+  page.evaluate(() => {
+    const sys = globalThis.handheld;
+    const scene = sys?.stack?.[sys.stack.length - 1];
+    if (!scene?.map) return null;
+    return { level: scene.level?.id, x: scene.x, y: scene.y, found: Object.keys(scene.found || {}).length };
+  });
+
+// Walk about a bit, then look for the nearest landmark prompt. Each direction
+// is tried in turn and the furthest the walker gets is what counts: a keyboard
+// that never reaches the game would leave it exactly where it started.
+const before = await worldState();
+let moved = 0;
+for (const code of ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft']) {
+  await hold(code, 500);
+  const at = await worldState();
+  if (before && at) moved = Math.max(moved, Math.hypot(at.x - before.x, at.y - before.y));
+}
 await page.waitForTimeout(200);
 await shot('06-walked');
+if (!before) problems.push('no world scene was on the stack after choosing a place');
+else if (moved < 8) problems.push(`holding each direction moved the walker only ${moved.toFixed(1)}px; input is not reaching the game`);
 
 // Teleport next to a landmark so the check is deterministic.
 const near = await page.evaluate(() => {
@@ -108,6 +131,12 @@ await shot('09-landmark-page2');
 
 await key('KeyX'); // close
 await page.waitForTimeout(400);
+
+// Reading a landmark has to be recorded, or the tally on the HUD and the
+// progress on the title screen are both lying.
+const afterRead = await worldState();
+if (afterRead && afterRead.found < 1) problems.push('reading a landmark did not mark it found');
+
 await key('Enter'); // pause map
 await page.waitForTimeout(600);
 await shot('10-pause-map');
@@ -143,6 +172,12 @@ if (hub) {
   await key('KeyZ'); // skip to arrival
   await page.waitForTimeout(2500);
   await shot('16-arrived');
+
+  // The journey has to end somewhere else, on a world scene: a cut scene that
+  // finishes into nothing is the failure mode worth catching here.
+  const arrived = await worldState();
+  if (!arrived) problems.push('after travelling there was no world scene on the stack');
+  else if (arrived.level === before?.level) problems.push(`travel ended back on ${arrived.level}, the place it started from`);
 }
 
 const state = await page.evaluate(() => {

@@ -125,6 +125,11 @@ const { Save } = saveMod;
 const { LEVELS, LEVEL_BY_ID } = levelsMod;
 const GAME = gameMod.default || gameMod;
 
+if (typeof GAME?.create !== 'function') {
+  console.error('\ngames/explorer/main.js no longer exports a cartridge with create(); nothing can be played.');
+  process.exit(1);
+}
+
 const ARG = process.argv[2];
 const TARGETS = ARG ? LEVELS.filter((l) => l.id === ARG) : LEVELS;
 if (ARG && !TARGETS.length) {
@@ -557,7 +562,14 @@ const places = new Map();
 
 async function placeFor(levelId) {
   if (places.has(levelId)) return places.get(levelId);
-  const session = await enterWorld(levelId);
+  let session = null;
+  try {
+    session = await enterWorld(levelId);
+  } catch (err) {
+    // The cartridge is being worked on by other people; a shape change should
+    // read as one clear failure, not a stack trace out of the harness.
+    fail(`${levelId}: playing into the world threw - ${err.stack?.split('\n').slice(0, 2).join(' | ') || err}`);
+  }
   if (!session) {
     places.set(levelId, null);
     fail(`${levelId}: could not reach a WorldScene by playing the menus - the cartridge may not boot`);
@@ -715,15 +727,15 @@ async function suiteReachability() {
       // With a broken spawn every target is stranded by definition; that is one
       // bug, already reported above, not one per landmark.
       const unexplained = stranded.filter((t) => !islanded.some((i) => i.id === t.id));
-      if (spawnIsMain) {
+      if (spawnIsMain && unexplained.length) {
         fail(
           `${level.id}: ${unexplained.length} landmark(s)/hub(s) cannot be walked to from the spawn point: ` +
             unexplained.map((t) => `${t.id} "${t.name}"`).join(', '),
         );
-      } else {
+      } else if (!spawnIsMain) {
         note(
           `${level.id}: ${stranded.length} of ${rows.length} targets are unreachable from the spawn, all of it downstream of the ` +
-            `spawn pocket above; ${stranded.length - islanded.length} of them come back the moment the spawn is moved`,
+            `spawn pocket above; ${unexplained.length} of them come back the moment the spawn is moved`,
         );
       }
     }
@@ -924,57 +936,79 @@ async function suiteTravel() {
   }
 
   const rows = [];
+  const seenRoutes = new Set();
+
+  /**
+   * Check where one route puts you down: in bounds, standable, joined to the
+   * rest of the map, and near enough to a hub that you can turn around again.
+   */
+  const checkArrival = (label, route) => {
+    if (seenRoutes.has(label)) return;
+    seenRoutes.add(label);
+    const dest = places.get(route.to);
+    if (!dest) return;
+
+    const arrival = arrivalPixel(dest.map, route);
+    const atx = Math.floor(arrival.x / TILE);
+    const aty = Math.floor(arrival.y / TILE);
+    if (!check(
+      atx >= 0 && aty >= 0 && atx < dest.map.w && aty < dest.map.h,
+      `${label}: the arrival point ${route.arriveAt} falls outside the ${route.to} map`,
+    )) return;
+
+    const i = aty * dest.map.w + atx;
+    check(dest.stand[i] === 1, `${label}: you arrive on a tile too narrow for the walker to stand on (${route.arriveAt})`);
+
+    // Connectivity is measured against the map's main walkable region, not the
+    // spawn: a badly placed spawn is suite 1's finding, not this one's.
+    const comp = dest.comps.label[i];
+    const inMain = comp === dest.comps.largest;
+    check(
+      inMain,
+      `${label}: you arrive in a ${comp >= 0 ? dest.comps.sizes[comp] : 0}-tile pocket, cut off from the ` +
+        `${dest.comps.sizes[dest.comps.largest]}-tile main region of ${route.to}`,
+    );
+
+    // And you must be able to leave again: a hub within a short walk of where
+    // the journey drops you, or the trip is one-way in practice.
+    let nearest = Infinity;
+    let nearestId = '-';
+    for (const h of dest.map.hubs || []) {
+      const d = Math.hypot(h.postX - arrival.x, h.postY - arrival.y);
+      if (d < nearest) ((nearest = d), (nearestId = h.id));
+    }
+    const metres = (nearest / TILE) * dest.map.metersPerTile;
+    check(
+      Number.isFinite(metres) && metres < 400,
+      `${label}: you land ${Math.round(metres)}m from the nearest travel hub on ${route.to}; there is no obvious way back`,
+    );
+
+    const walkCost = dest.refField.dist[i];
+    rows.push([
+      label,
+      route.kind,
+      inMain ? 'main' : 'POCKET',
+      walkCost >= 0 ? `${Math.round(metresOf(dest.map, walkCost))} m` : 'no route',
+      `${Math.round(metres)} m`,
+      nearestId,
+    ]);
+  };
+
   for (const level of TARGETS) {
     for (const hub of hubsFor(level.id)) {
       for (const route of hub.routes) {
         const label = `${level.id}/${hub.id} -> ${route.to}`;
         if (!check(Boolean(LEVEL_BY_ID[route.to]), `${label}: route points at unknown level "${route.to}"`)) continue;
+        if (!check(Boolean(await placeFor(route.to)), `${label}: the destination level would not compile or would not load`)) continue;
+        checkArrival(label, route);
 
-        const dest = await placeFor(route.to);
-        if (!check(Boolean(dest), `${label}: the destination level would not compile or would not load`)) continue;
-
-        const arrival = arrivalPixel(dest.map, route);
-        const atx = Math.floor(arrival.x / TILE);
-        const aty = Math.floor(arrival.y / TILE);
-        const inBounds = atx >= 0 && aty >= 0 && atx < dest.map.w && aty < dest.map.h;
-        if (!check(inBounds, `${label}: the arrival point ${route.arriveAt} falls outside the ${route.to} map`)) continue;
-
-        const i = aty * dest.map.w + atx;
-        check(dest.stand[i] === 1, `${label}: you arrive on a tile too narrow for the walker to stand on (${route.arriveAt})`);
-
-        // Connectivity is measured against the map's main walkable region, not
-        // the spawn: a broken spawn is suite 1's finding, not this one's.
-        const comp = dest.comps.label[i];
-        const inMain = comp === dest.comps.largest;
-        check(
-          inMain,
-          `${label}: you arrive in a ${comp >= 0 ? dest.comps.sizes[comp] : 0}-tile pocket, cut off from the ` +
-            `${dest.comps.sizes[dest.comps.largest]}-tile main region of ${route.to}`,
-        );
-
-        // And you must be able to leave again: a hub within a short walk of
-        // where the journey drops you, or the trip is one-way in practice.
-        let nearest = Infinity;
-        let nearestId = '-';
-        for (const h of dest.map.hubs || []) {
-          const d = Math.hypot(h.postX - arrival.x, h.postY - arrival.y);
-          if (d < nearest) ((nearest = d), (nearestId = h.id));
+        // The return leg, so a round trip is tested even when the run is
+        // narrowed to one place with an argument.
+        const back = routesFrom(route.to).filter((r) => r.to === level.id);
+        check(back.length > 0, `${label}: there is no route back from ${route.to} to ${level.id}; the journey is one-way`);
+        for (const r of back) {
+          if (await placeFor(r.from)) checkArrival(`${r.from}/${r.hubId ?? 'hub'} -> ${r.to}`, r);
         }
-        const metres = (nearest / TILE) * dest.map.metersPerTile;
-        check(
-          Number.isFinite(metres) && metres < 400,
-          `${label}: you land ${Math.round(metres)}m from the nearest travel hub on ${route.to}; there is no obvious way back`,
-        );
-
-        const walkCost = dest.refField.dist[i];
-        rows.push([
-          label,
-          route.kind,
-          inMain ? 'main' : 'POCKET',
-          walkCost >= 0 ? `${Math.round(metresOf(dest.map, walkCost))} m` : 'no route',
-          `${Math.round(metres)} m`,
-          nearestId,
-        ]);
       }
     }
   }
@@ -1308,7 +1342,7 @@ async function suiteText() {
 
 // --- suite 6: saves --------------------------------------------------------
 
-function suiteSave() {
+async function suiteSave() {
   suite('6. SAVE DATA WITH NO BATTERY');
 
   let save;
@@ -1352,6 +1386,24 @@ function suiteSave() {
   } catch (err) {
     fail(`saveFor threw: ${err.message}`);
   }
+
+  // The scenes write to the save on every landmark found and every step taken,
+  // so the real test is that a live WorldScene can do both with no store under
+  // it. Everything above this line has already been running that way.
+  const place = places.get(TARGETS[0]?.id);
+  if (place) {
+    try {
+      place.world.markFound(place.map.pois[0].id);
+      place.world.remember();
+      check(
+        Object.keys(place.world.found || {}).length > 0,
+        'a landmark read with no backing store was not remembered for the rest of the session',
+      );
+      note(`the whole run above played ${TARGETS.length} place(s) on a dead battery without throwing`);
+    } catch (err) {
+      fail(`the world scene threw while saving with no backing store: ${err.message}`);
+    }
+  }
 }
 
 // --- run -------------------------------------------------------------------
@@ -1364,7 +1416,7 @@ await suiteWalking();
 await suiteDistances();
 await suiteTravel();
 await suiteText();
-suiteSave();
+await suiteSave();
 
 const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 console.log(`\n${checks} checks over ${TARGETS.length} place(s) in ${elapsed}s`);

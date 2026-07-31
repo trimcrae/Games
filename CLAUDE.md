@@ -55,8 +55,25 @@ GitHub Pages publishes. Do not sit on finished work waiting for permission.
 - Land changes on the feature branch, then fast-forward or merge into `main` and
   push, whenever a change is coherent and the site still runs.
 - No pull request is needed for this. (Only open one if explicitly asked.)
-- The one precondition is that it works: `node tools/validate.mjs` passes and the
-  page still boots in a browser check before merging.
+- The one precondition is that it works. Before merging, all three must pass:
+  `node tools/validate.mjs` (content), `node tools/playtest.mjs` (playability),
+  and `node tools/browser-check.mjs` (the real page in Chromium).
+- Never merge knowingly-red work to `main`. Checkpoint it on the feature branch
+  instead and say so in the commit message.
+
+## What the test scripts are for
+
+- `validate.mjs` — static content. Does every level compile, does every landmark
+  have a licensed photograph of itself, is every map mostly walkable.
+- `playtest.mjs` — playability. Flood-fills the walkable region from the spawn
+  and drives the real scenes headlessly. This is the one that catches "the
+  landmark has a walkable tile next to it" being different from "the player can
+  actually get there and stand on it".
+- `browser-check.mjs` — the real page in a real browser, with screenshots.
+
+`validate.mjs` passing does not mean the game is playable. That distinction is
+load-bearing: it once passed a build where Stanford's spawn was sealed inside a
+52-tile pocket.
 
 ## Look and art decisions (settled)
 
