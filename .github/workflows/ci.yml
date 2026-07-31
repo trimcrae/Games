@@ -22,10 +22,10 @@ jobs:
         run: node tools/validate.mjs
 
       # Plays every place headlessly: flood-fills the walkable ground from each
-      # spawn, drives the real movement code with seeded input, walks the travel
-      # routes and the cut scenes, and lays out every caption at both ends of
-      # the console's resolution range. No browser needed, so it runs before the
-      # Playwright install and fails fast.
+      # spawn, drives the real movement code on foot and on the bike with seeded
+      # input, walks the travel routes and the cut scenes, and lays out every
+      # caption at both ends of the console's resolution range. No browser
+      # needed, so it runs before the Playwright install and fails fast.
       - name: Play the game headless
         run: node tools/playtest.mjs
 

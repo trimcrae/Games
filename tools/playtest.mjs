@@ -137,9 +137,11 @@ if (ARG && !TARGETS.length) {
   process.exit(2);
 }
 
-// The player's reach at a landmark post or a travel hub, in world pixels; see
-// WorldScene.update and travel.hubNear. Kept here so the reachability tests ask
-// exactly the question the game asks.
+// Arm's reach for the A button, in world pixels: REACH_WALK from main.js. A
+// rider gets a little more (REACH_RIDE, 30, because a bike cannot stop dead),
+// but a landmark that can only be read from the saddle is a landmark you cannot
+// read before you have found a bike - so every reachability test here asks the
+// stricter on-foot question.
 const REACH = 22;
 
 // The console's framebuffer is chosen at boot from the device, so every layout
@@ -328,16 +330,32 @@ async function enterWorld(levelId) {
 
 // --- walkability model -----------------------------------------------------
 //
-// A tile being open is not the same as the walker fitting on it. The feet box
-// in WorldScene.blocked spans x-4..x+4, nine pixels across an eight pixel grid,
-// so the walker always straddles two tile columns: for x in [8c+4, 8c+12) it
-// occupies columns c and c+1, and nothing narrower will do. Vertically the box
-// is seven pixels and does fit inside one row, for y in [8r+3, 8r+5).
+// The feet box in WorldScene.blocked is seven pixels square, x-3..x+3 by
+// y-3..y+3, which is the largest that still fits inside one eight pixel tile.
+// (It used to be nine wide; that version could never fit in a one-tile path,
+// which is what the first run of this harness found. If it ever grows again,
+// the self-check in suite 1 fails on the first tile it disagrees about.)
 //
-// So "the walker can stand in column pair c at row r" is exactly "(c,r) and
-// (c+1,r) are both open", and that - not the raw solid grid - is the graph the
-// reachability tests flood. A model check in suite 1 asserts this agrees with
-// the game's own `blocked()` on every tile of every map.
+// Seven pixels on an eight pixel grid partitions each axis into three windows
+// per tile. Taking x and column c:
+//
+//   x in [8c+3, 8c+5)   the box is wholly inside column c
+//   x in [8c+5, 8c+11)  it leans east, covering columns c and c+1
+//   x in [8c-3, 8c+3)   it leans west, covering columns c-1 and c
+//
+// and the same in y for rows. A position is legal exactly when every tile in
+// (its columns x its rows) is open - so leaning both east and south needs the
+// south-east diagonal open too, not just the two orthogonal neighbours.
+//
+// Two things fall out, and they are what the rest of the file is built on:
+//
+//   1. The box fits inside one tile, so "the walker can stand centred on this
+//      tile" is simply "this tile is open". That is the flood-fill graph.
+//   2. The positions the walker can hold *near* a tile are the union of up to
+//      nine window rectangles, one per (x window, y window) pair whose tiles
+//      are all open. That is what the arm's-reach tests measure against, and
+//      it is exact rather than approximate - suite 1 checks both claims
+//      against the game's own blocked() on every tile of every map.
 
 /** Uint8 grid: 1 where the walker can stand centred on the tile. */
 function standingGrid(map) {
@@ -345,7 +363,7 @@ function standingGrid(map) {
   const out = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     const row = y * w;
-    for (let x = 0; x < w - 1; x++) out[row + x] = !solid[row + x] && !solid[row + x + 1] ? 1 : 0;
+    for (let x = 0; x < w; x++) out[row + x] = solid[row + x] ? 0 : 1;
   }
   return out;
 }
@@ -483,34 +501,69 @@ function componentsOf(map, stand) {
   return { label, sizes, largest };
 }
 
+// The three windows one axis of the box can occupy relative to a tile: wholly
+// inside it, leaning into the next tile, leaning into the previous one. `off`
+// lists the tiles covered, `lo`/`hi` the half-open range of positions. The
+// body is never pinned to tile centres, which is why arm's reach is measured
+// against these rectangles rather than against a point.
+const WINDOWS = [
+  { off: [0], lo: 3, hi: 5 },
+  { off: [0, 1], lo: 5, hi: 11 },
+  { off: [-1, 0], lo: -3, hi: 3 },
+];
+
 /**
- * How close the walker can get to a world point while standing in column pair
- * `tx` at row `ty`. The walker is not pinned to tile centres: x may be anywhere
- * in [8tx+4, 8tx+12) and y in [8ty+3, 8ty+5), so this is a point-to-rectangle
- * distance, not a point-to-point one.
+ * Every rectangle of legal walker positions anchored on tile (tx,ty): the pairs
+ * of windows whose whole tile footprint is open. Up to nine of them, always at
+ * least one when the tile itself is open.
+ * @returns {Array<{x0:number,x1:number,y0:number,y1:number}>}
  */
-function standingRect(map, stand, tx, ty) {
-  const x0 = tx * TILE + TILE / 2;
-  const x1 = x0 + TILE - 0.01; // one pixel further and the walker straddles tx+1
-  let y0 = ty * TILE + 3;
-  let y1 = ty * TILE + 4.99;
-  // Standing across two rows needs all four tiles, but buys vertical room.
-  if (ty + 1 < map.h && stand[(ty + 1) * map.w + tx]) y1 = ty * TILE + 10.99;
-  if (ty > 0 && stand[(ty - 1) * map.w + tx]) y0 = ty * TILE - 3;
-  return { x0, x1, y0, y1 };
+function standingRects(map, stand, tx, ty) {
+  const out = [];
+  for (const xw of WINDOWS) {
+    for (const yw of WINDOWS) {
+      let ok = true;
+      for (const dx of xw.off) {
+        for (const dy of yw.off) {
+          const x = tx + dx;
+          const y = ty + dy;
+          if (x < 0 || y < 0 || x >= map.w || y >= map.h || !stand[y * map.w + x]) {
+            ok = false;
+            break;
+          }
+        }
+        if (!ok) break;
+      }
+      if (!ok) continue;
+      // hi is exclusive in the model; step back a hair so clamping to it stays
+      // on the legal side of the boundary.
+      out.push({ x0: tx * TILE + xw.lo, x1: tx * TILE + xw.hi - 0.01, y0: ty * TILE + yw.lo, y1: ty * TILE + yw.hi - 0.01 });
+    }
+  }
+  return out;
 }
 
 const clampTo = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
+const rectDistance = (r, px, py) => Math.hypot(px - clampTo(px, r.x0, r.x1), py - clampTo(py, r.y0, r.y1));
+
+/** How close the walker can get to a point while standing on tile (tx,ty). */
 function reachDistance(map, stand, tx, ty, px, py) {
-  const { x0, x1, y0, y1 } = standingRect(map, stand, tx, ty);
-  return Math.hypot(px - clampTo(px, x0, x1), py - clampTo(py, y0, y1));
+  let best = Infinity;
+  for (const r of standingRects(map, stand, tx, ty)) best = Math.min(best, rectDistance(r, px, py));
+  return best;
 }
 
-/** The legal walker position in tile (tx,ty) that gets closest to a point. */
+/** The legal walker position on tile (tx,ty) that gets closest to a point. */
 function standingPosition(map, stand, tx, ty, px, py) {
-  const { x0, x1, y0, y1 } = standingRect(map, stand, tx, ty);
-  return { x: clampTo(px, x0, x1), y: clampTo(py, y0, y1) };
+  let best = null;
+  let bestD = Infinity;
+  for (const r of standingRects(map, stand, tx, ty)) {
+    const d = rectDistance(r, px, py);
+    if (d < bestD) ((bestD = d), (best = r));
+  }
+  if (!best) return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
+  return { x: clampTo(px, best.x0, best.x1), y: clampTo(py, best.y0, best.y1) };
 }
 
 /**
@@ -617,11 +670,19 @@ async function placeFor(levelId) {
   return entry;
 }
 
-/** Landmarks and hubs together: everything the player has to be able to walk to. */
+/**
+ * Landmarks, travel hubs and bike racks together: everything on the map the
+ * player has to be able to walk up to. A rack that cannot be reached on foot is
+ * a bicycle that does not exist.
+ */
 const targetsOn = (map) => [
   ...map.pois.map((p) => ({ kind: 'landmark', id: p.id, name: p.name, x: p.postX ?? p.x, y: p.postY ?? p.y, at: p.at })),
   ...(map.hubs || []).map((h) => ({ kind: 'hub', id: h.id, name: h.name, x: h.postX, y: h.postY, at: h.at })),
+  ...(map.racks || []).map((r) => ({ kind: 'rack', id: r.id, name: r.name, x: r.postX, y: r.postY, at: r.at })),
 ];
+
+/** Prefix used for a target in the report tables. */
+const tag = (t) => (t.kind === 'landmark' ? '' : `(${t.kind}) `);
 
 // --- suite 1: reachability -------------------------------------------------
 
@@ -634,17 +695,63 @@ async function suiteReachability() {
     const { world, map, stand, field, open, comps, spawnTile } = place;
     const [sx, sy] = spawnTile;
 
-    // Self-check: the model above has to agree with the game's own collision
-    // test, or every verdict in this suite is worthless.
+    // Self-check, and the thing that keeps this file honest while the game
+    // moves: the model has to agree with the game's own collision test, or
+    // every verdict in this suite is worthless.
+    //
+    // Claim 1, over every tile of the map: an open tile is one the walker can
+    // stand centred on, and a solid one is not.
     let mismatches = 0;
     for (let y = 1; y < map.h - 1 && mismatches === 0; y++) {
-      for (let x = 1; x < map.w - 2; x++) {
+      for (let x = 1; x < map.w - 1; x++) {
         const model = stand[y * map.w + x] === 1;
         if (model === !world.blocked(x * TILE + TILE / 2, y * TILE + TILE / 2)) continue;
         mismatches++;
-        fail(`${level.id}: the harness collision model disagrees with WorldScene.blocked at tile ${x},${y}`);
+        fail(
+          `${level.id}: the harness collision model disagrees with WorldScene.blocked at tile ${x},${y} - ` +
+            `the model says ${model ? 'standable' : 'solid'}. The feet box has changed size; update standingGrid and WINDOWS.`,
+        );
         break;
       }
+    }
+
+    // Claim 2, on a seeded sample: every position the model calls legal really
+    // is, and every position the game calls legal is one the model knows about.
+    // A quarter-pixel sweep of the whole map would be exact but takes minutes,
+    // and a few thousand samples catch a broken window table immediately.
+    const rand = prng(seedOf(`${level.id}:rects`));
+    let unsound = 0;
+    let uncovered = 0;
+    for (let n = 0; n < 3000 && !unsound && !uncovered; n++) {
+      const tx = 1 + Math.floor(rand() * (map.w - 2));
+      const ty = 1 + Math.floor(rand() * (map.h - 2));
+      if (!stand[ty * map.w + tx]) continue;
+      for (const r of standingRects(map, stand, tx, ty)) {
+        for (const [px, py] of [
+          [r.x0, r.y0],
+          [r.x1, r.y1],
+          [r.x0, r.y1],
+          [r.x1, r.y0],
+          [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2],
+        ]) {
+          if (!world.blocked(px, py)) continue;
+          unsound++;
+          fail(
+            `${level.id}: the model calls ${px.toFixed(2)},${py.toFixed(2)} a legal position on tile ${tx},${ty}, ` +
+              `but WorldScene.blocked disagrees`,
+          );
+          break;
+        }
+        if (unsound) break;
+      }
+      // And the other direction, from a position the game accepts.
+      const px = tx * TILE + rand() * TILE;
+      const py = ty * TILE + rand() * TILE;
+      if (world.blocked(px, py)) continue;
+      const home = standingRects(map, stand, Math.floor(px / TILE), Math.floor(py / TILE));
+      if (home.some((r) => px >= r.x0 && px <= r.x1 + 0.01 && py >= r.y0 && py <= r.y1 + 0.01)) continue;
+      uncovered++;
+      fail(`${level.id}: WorldScene.blocked allows ${px.toFixed(2)},${py.toFixed(2)} but no window in the model covers it`);
     }
 
     const spawnComp = comps.label[sy * map.w + sx];
@@ -700,7 +807,7 @@ async function suiteReachability() {
       // is off the map's main walkable region no matter where you start.
       if (anywhere && stanceComp !== comps.largest) islanded.push({ ...target, size: comps.sizes[stanceComp] ?? 0 });
       rows.push([
-        `${target.kind === 'hub' ? '(hub) ' : ''}${target.id}`,
+        `${tag(target)}${target.id}`,
         `${tx},${ty}`,
         stanceComp >= 0 ? `#${stanceComp} (${comps.sizes[stanceComp]})` : '-',
         verdict,
@@ -718,7 +825,7 @@ async function suiteReachability() {
     }
     for (const t of islanded) {
       fail(
-        `${level.id}/${t.id} "${t.name}" (${t.kind === 'hub' ? 'travel hub' : 'landmark'}) sits on an island: the only ground you ` +
+        `${level.id}/${t.id} "${t.name}" (${t.kind}) sits on an island: the only ground you ` +
           `can read it from is a ${t.size}-tile region with no walkable link to the ${largestSize}-tile main region, ` +
           `so it is unreachable wherever the player starts (post at ${t.at})`,
       );
@@ -729,7 +836,7 @@ async function suiteReachability() {
       const unexplained = stranded.filter((t) => !islanded.some((i) => i.id === t.id));
       if (spawnIsMain && unexplained.length) {
         fail(
-          `${level.id}: ${unexplained.length} landmark(s)/hub(s) cannot be walked to from the spawn point: ` +
+          `${level.id}: ${unexplained.length} of ${rows.length} landmarks, hubs or bike racks cannot be walked to from the spawn point: ` +
             unexplained.map((t) => `${t.id} "${t.name}"`).join(', '),
         );
       } else if (!spawnIsMain) {
@@ -754,8 +861,104 @@ async function driveFrame(sys, held, dt = 1 / 60) {
 
 const DIRS = ['up', 'down', 'left', 'right'];
 
+/**
+ * Put the body on a bicycle the way a player does: the bike is yours once you
+ * have found a rack, and SELECT is the toggle.
+ * @returns {Promise<boolean>} true if it is now riding
+ */
+async function mountBike(sys, world) {
+  sys.input.clearSource('key');
+  world.hasBike = true;
+  await sys.tap('select');
+  return Boolean(world.riding);
+}
+
+/**
+ * The anti-tunnelling substep in WorldScene.step, tested where it bites: a body
+ * asked to cross a one-tile wall in a single call. Without substepping the one
+ * collision test lands on the open ground beyond and the wall is simply not
+ * there; with it, the move is cut into pieces no larger than the feet box and
+ * the body stops against the wall.
+ *
+ * This is a direct test of `step`, not of a frame: at the console's fixed
+ * 1/60s a bicycle covers under 3px, so ordinary play never exercises the
+ * substep at all. It is insurance against a faster body or a longer frame, and
+ * insurance nobody tests is not insurance.
+ */
+function checkSubstepping(level, place) {
+  const { world, map, stand } = place;
+  if (typeof world.step !== 'function') {
+    skip(`${level.id}: WorldScene has no step(); the anti-tunnelling substep is untested`);
+    return 0;
+  }
+
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  const savedX = world.x;
+  const savedY = world.y;
+  let tested = 0;
+  let tunnels = 0;
+
+  for (const [dx, dy] of dirs) {
+    // Somewhere with a wall exactly one tile thick and open ground behind it,
+    // which is the geometry a single long collision test jumps straight over.
+    const spots = [];
+    const stride = Math.max(1, Math.floor((map.w * map.h) / 4000));
+    for (let i = 0; i < stand.length && spots.length < 8; i += stride) {
+      const x = i % map.w;
+      const y = (i / map.w) | 0;
+      const x1 = x + dx;
+      const y1 = y + dy;
+      const x2 = x + dx * 2;
+      const y2 = y + dy * 2;
+      if (x2 < 0 || y2 < 0 || x2 >= map.w || y2 >= map.h) continue;
+      if (!stand[i] || stand[y1 * map.w + x1] || !stand[y2 * map.w + x2]) continue;
+      spots.push([x, y, x1, y1]);
+    }
+
+    for (const [x, y, wallX, wallY] of spots) {
+      for (const distance of [TILE * 2, TILE * 6]) {
+        world.x = x * TILE + TILE / 2;
+        world.y = y * TILE + TILE / 2;
+        const got = world.step(dx * distance, dy * distance);
+        tested++;
+
+        const landedX = Math.floor(world.x / TILE);
+        const landedY = Math.floor(world.y / TILE);
+        const past = dx ? (dx > 0 ? landedX >= wallX : landedX <= wallX) : dy > 0 ? landedY >= wallY : landedY <= wallY;
+        if (past) {
+          tunnels++;
+          if (tunnels === 1) {
+            fail(
+              `${level.id}: a ${distance}px step from tile ${x},${y} went through the solid tile at ${wallX},${wallY} ` +
+                `and came to rest on ${landedX},${landedY} - the move is not being split into substeps`,
+            );
+          }
+        }
+        if (world.blocked(world.x, world.y)) {
+          fail(`${level.id}: a ${distance}px step from tile ${x},${y} ended inside a solid tile`);
+        }
+        // step() documents its return as how far it actually got.
+        const actual = Math.hypot(world.x - (x * TILE + TILE / 2), world.y - (y * TILE + TILE / 2));
+        check(
+          Math.abs(got - actual) < 0.01,
+          `${level.id}: step() reported ${got.toFixed(2)}px of movement but the body moved ${actual.toFixed(2)}px`,
+        );
+      }
+    }
+  }
+
+  world.x = savedX;
+  world.y = savedY;
+  return { tested, tunnels };
+}
+
 async function suiteWalking() {
-  suite('2. SIMULATED WALKING  (the real WorldScene movement code, seeded input)');
+  suite('2. SIMULATED WALKING AND RIDING  (the real WorldScene movement code)');
 
   for (const level of TARGETS) {
     const place = await placeFor(level.id);
@@ -763,8 +966,8 @@ async function suiteWalking() {
     const { world, session, map } = place;
     const sys = session.sys;
 
-    // Start from the spawn and from a legal standing spot beside every landmark
-    // and hub - the places the game actually drops a player.
+    // Start from the spawn and from a legal standing spot beside every landmark,
+    // hub and bike rack - the places the game actually drops a body.
     const starts = [{ name: 'spawn', x: map.spawn.x, y: map.spawn.y }];
     for (const target of targetsOn(map)) {
       const stance = standBeside(place, target.x, target.y);
@@ -772,98 +975,132 @@ async function suiteWalking() {
       starts.push({ name: target.id, x: stance.x, y: stance.y });
     }
 
-    const rand = prng(seedOf(level.id));
-    const maxStep = map.walkSpeed * 2.1 * (1 / 60) * 1.5; // running, with slack
-    let overlaps = 0;
-    let escapes = 0;
-    let wedges = 0;
-    let jumps = 0;
-    let frames = 0;
-    let travelled = 0;
-    const wedgedAt = [];
+    for (const mode of ['walk', 'ride']) {
+      if (mode === 'ride') {
+        if (typeof world.mount !== 'function') {
+          skip(`${level.id}: WorldScene has no mount(); the bicycle is untested`);
+          continue;
+        }
+        if (!check(await mountBike(sys, world), `${level.id}: SELECT with a bike in the saddlebag did not start riding`)) continue;
+      }
 
-    for (const start of starts) {
-      world.x = start.x;
-      world.y = start.y;
-      check(
-        !world.blocked(world.x, world.y),
-        `${level.id}: the walker is inside a solid tile the moment it is placed at "${start.name}" (${start.x},${start.y})`,
+      const rand = prng(seedOf(`${level.id}:${mode}`));
+      // Ceiling on how far any body can travel in one frame: the bike's paved
+      // top speed from main.js. If the bike gets faster, raise this - but read
+      // the collision failures first, because a faster body is exactly what
+      // finds holes in a tile grid.
+      const topMult = mode === 'ride' ? 2.9 : 2.1;
+      const maxStep = map.walkSpeed * topMult * (1 / 60) * 1.02;
+      let overlaps = 0;
+      let escapes = 0;
+      let wedges = 0;
+      let jumps = 0;
+      let frames = 0;
+      let travelled = 0;
+      let fastest = 0;
+      const wedgedAt = [];
+
+      for (const start of starts) {
+        world.x = start.x;
+        world.y = start.y;
+        world.speed = 0; // no momentum carried over from the last starting point
+        check(
+          !world.blocked(world.x, world.y),
+          `${level.id}: the body is inside a solid tile the moment it is placed at "${start.name}" (${start.x},${start.y})`,
+        );
+
+        // A scripted pass first - each direction, then every diagonal, so the
+        // per-axis slide is exercised against walls - and then a random one.
+        const runs = [];
+        for (const d of DIRS) runs.push([new Set([d]), 90]);
+        for (const a of ['up', 'down']) for (const b of ['left', 'right']) runs.push([new Set([a, b]), 60]);
+        runs.push([new Set(['right', 'b']), 90]); // running on foot, braking on the bike
+        for (let i = 0; i < 26; i++) {
+          const held = new Set([DIRS[Math.floor(rand() * 4)]]);
+          if (rand() > 0.55) held.add(DIRS[Math.floor(rand() * 4)]);
+          if (rand() > 0.75) held.add('b');
+          runs.push([held, 6 + Math.floor(rand() * 20)]);
+        }
+
+        for (const [held, count] of runs) {
+          for (let f = 0; f < count; f++) {
+            const px = world.x;
+            const py = world.y;
+            await driveFrame(sys, held);
+            frames++;
+
+            if (world.blocked(world.x, world.y)) {
+              overlaps++;
+              if (overlaps === 1) {
+                fail(
+                  `${level.id}: ${mode}ing ended a frame overlapping a solid tile at ` +
+                    `${world.x.toFixed(1)},${world.y.toFixed(1)} (started at "${start.name}", ` +
+                    `holding ${[...held].join('+')}, seed ${seedOf(`${level.id}:${mode}`)})`,
+                );
+              }
+            }
+            if (world.x < 4 || world.y < 8 || world.x > map.w * TILE - 4 || world.y > map.h * TILE - 4) {
+              escapes++;
+              if (escapes === 1) {
+                fail(`${level.id}: ${mode}ing left the map at ${world.x.toFixed(1)},${world.y.toFixed(1)} (started at "${start.name}")`);
+              }
+            }
+            const moved = Math.hypot(world.x - px, world.y - py);
+            travelled += moved;
+            if (moved > fastest) fastest = moved;
+            if (moved > maxStep) {
+              jumps++;
+              if (jumps === 1) {
+                fail(
+                  `${level.id}: ${mode}ing covered ${moved.toFixed(2)}px in one frame, past the ${maxStep.toFixed(2)}px a body at ` +
+                    `${topMult}x walk speed can manage (started at "${start.name}")`,
+                );
+              }
+            }
+          }
+
+          // Wedged: nothing at all can move it, in any direction, at walking pace.
+          const probe = map.walkSpeed / 60;
+          const boxedIn =
+            world.blocked(world.x + probe, world.y) &&
+            world.blocked(world.x - probe, world.y) &&
+            world.blocked(world.x, world.y + probe) &&
+            world.blocked(world.x, world.y - probe);
+          if (boxedIn) {
+            wedges++;
+            if (wedgedAt.length < 3) wedgedAt.push(`${world.x.toFixed(1)},${world.y.toFixed(1)} from "${start.name}"`);
+          }
+        }
+      }
+
+      if (wedges) {
+        fail(
+          `${level.id}: ${mode}ing wedged with no way out on ${wedges} occasion(s) - e.g. ${wedgedAt.join('; ')} ` +
+            `(seed ${seedOf(`${level.id}:${mode}`)})`,
+        );
+      }
+
+      note(
+        `${level.id} ${mode}: ${frames} frames from ${starts.length} starting points, seed ${seedOf(`${level.id}:${mode}`)} - ` +
+          `${Math.round((travelled / TILE) * map.metersPerTile)}m covered, top ${fastest.toFixed(2)}px/frame, ` +
+          `${overlaps} overlaps, ${escapes} escapes, ${wedges} wedges, ${jumps} over-long steps`,
       );
-
-      // A scripted pass first - each direction, then every diagonal, so the
-      // per-axis slide is exercised against walls - and then a random one.
-      const runs = [];
-      for (const d of DIRS) runs.push([new Set([d]), 90]);
-      for (const a of ['up', 'down']) for (const b of ['left', 'right']) runs.push([new Set([a, b]), 60]);
-      runs.push([new Set(['right', 'b']), 90]); // running
-      for (let i = 0; i < 26; i++) {
-        const held = new Set([DIRS[Math.floor(rand() * 4)]]);
-        if (rand() > 0.55) held.add(DIRS[Math.floor(rand() * 4)]);
-        if (rand() > 0.75) held.add('b');
-        runs.push([held, 6 + Math.floor(rand() * 20)]);
-      }
-
-      for (const [held, count] of runs) {
-        for (let f = 0; f < count; f++) {
-          const px = world.x;
-          const py = world.y;
-          await driveFrame(sys, held);
-          frames++;
-
-          if (world.blocked(world.x, world.y)) {
-            overlaps++;
-            if (overlaps === 1) {
-              fail(
-                `${level.id}: the walker ended a frame overlapping a solid tile at ${world.x.toFixed(1)},${world.y.toFixed(1)} ` +
-                  `(started at "${start.name}", holding ${[...held].join('+')}, seed ${seedOf(level.id)})`,
-              );
-            }
-          }
-          if (world.x < 4 || world.y < 8 || world.x > map.w * TILE - 4 || world.y > map.h * TILE - 4) {
-            escapes++;
-            if (escapes === 1) {
-              fail(`${level.id}: the walker left the map at ${world.x.toFixed(1)},${world.y.toFixed(1)} (started at "${start.name}")`);
-            }
-          }
-          const moved = Math.hypot(world.x - px, world.y - py);
-          travelled += moved;
-          if (moved > maxStep) {
-            jumps++;
-            if (jumps === 1) fail(`${level.id}: the walker moved ${moved.toFixed(1)}px in one frame (started at "${start.name}")`);
-          }
-        }
-
-        // Wedged: nothing at all can move it, in any direction, at walking pace.
-        const probe = map.walkSpeed / 60;
-        const boxedIn =
-          world.blocked(world.x + probe, world.y) &&
-          world.blocked(world.x - probe, world.y) &&
-          world.blocked(world.x, world.y + probe) &&
-          world.blocked(world.x, world.y - probe);
-        if (boxedIn) {
-          wedges++;
-          if (wedgedAt.length < 3) wedgedAt.push(`${world.x.toFixed(1)},${world.y.toFixed(1)} from "${start.name}"`);
-        }
-      }
     }
 
-    // Leave no button held: the next suite places the walker by hand and must
-    // not have it walking off on its own.
+    // Back on foot, with nothing held: later suites place the body by hand and
+    // must not have it riding away on its own.
+    if (world.riding) await sys.tap('select');
     sys.input.clearSource('key');
     await sys.frame();
+    check(!world.riding, `${level.id}: SELECT did not get the rider off the bike again`);
 
-    if (wedges) {
-      fail(
-        `${level.id}: the walker wedged with no way out on ${wedges} occasion(s) - e.g. ${wedgedAt.join('; ')} ` +
-          `(seed ${seedOf(level.id)})`,
+    const substep = checkSubstepping(level, place);
+    if (substep?.tested) {
+      note(
+        `${level.id}: ${substep.tested} long single steps driven into one-tile walls, ` +
+          `${substep.tunnels} of them went through`,
       );
     }
-
-    note(
-      `${level.id}: ${frames} frames from ${starts.length} starting points, seed ${seedOf(level.id)} - ` +
-        `${Math.round((travelled / TILE) * map.metersPerTile)}m walked, ${overlaps} overlaps, ${escapes} escapes, ` +
-        `${wedges} wedges, ${jumps} bad steps`,
-    );
   }
 }
 
@@ -881,12 +1118,12 @@ async function suiteDistances() {
     for (const target of targetsOn(map)) {
       const spot = standingSpotNear(map, stand, refField.dist, target.x, target.y);
       if (!spot) {
-        rows.push([`${target.kind === 'hub' ? '(hub) ' : ''}${target.id}`, 'UNREACHABLE', '-', '-']);
+        rows.push([`${tag(target)}${target.id}`, 'UNREACHABLE', '-', '-']);
         continue;
       }
       const m = metresOf(map, spot.cost);
       const s = secondsOf(map, spot.cost);
-      rows.push([`${target.kind === 'hub' ? '(hub) ' : ''}${target.id}`, `${Math.round(m)} m`, mmss(s), Math.round(s)]);
+      rows.push([`${tag(target)}${target.id}`, `${Math.round(m)} m`, mmss(s), Math.round(s)]);
       // Nothing on a campus or a suburb map is a half-hour walk from the spawn
       // unless the spawn or the landmark is in the wrong place.
       check(
