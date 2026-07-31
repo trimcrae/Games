@@ -327,6 +327,7 @@ export const TRAVEL_HUBS = {
     {
       id: 'galvez-coach',
       kind: 'airport',
+      art: 'airportHub',
       name: 'GALVEZ COACH STOP',
       at: [37.43381, -122.16344],
       blurb:
@@ -354,6 +355,7 @@ export const TRAVEL_HUBS = {
     {
       id: 'transit-plaza',
       kind: 'airport',
+      art: 'airportHub',
       name: 'RIT TRANSIT PLAZA',
       at: [43.08343, -77.67512],
       blurb:
@@ -371,6 +373,7 @@ export const TRAVEL_HUBS = {
     {
       id: 'lomb-gate',
       kind: 'highway',
+      art: 'highwayHub',
       name: 'LOMB MEMORIAL DR',
       at: [43.08826, -77.67431],
       blurb:
@@ -381,7 +384,7 @@ export const TRAVEL_HUBS = {
           kind: 'drive',
           label: 'I-390 N',
           minutes: 28,
-          signs: ['I-390 N', 'NY-104 RIDGE RD'],
+          signs: ['I-390 N', 'RIDGE RD EXIT'],
           arriveAt: [43.20445, -77.67672],
         },
       ],
@@ -392,6 +395,7 @@ export const TRAVEL_HUBS = {
     {
       id: 'ridge-interchange',
       kind: 'highway',
+      art: 'highwayHub',
       name: 'RIDGE RD INTERCHANGE',
       at: [43.2037, -77.67672],
       blurb:
@@ -402,7 +406,7 @@ export const TRAVEL_HUBS = {
           kind: 'drive',
           label: 'I-390 S',
           minutes: 26,
-          signs: ['I-390 S', 'NY-252 JEFFERSON RD'],
+          signs: ['I-390 S', 'JEFFERSON RD EXIT'],
           arriveAt: [43.08847, -77.67401],
         },
       ],
@@ -410,6 +414,7 @@ export const TRAVEL_HUBS = {
     {
       id: 'tofany-coach',
       kind: 'airport',
+      art: 'airportHub',
       name: 'TOWN HALL PARK+RIDE',
       at: [43.25904, -77.69863],
       blurb:

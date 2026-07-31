@@ -86,4 +86,25 @@ jobs:
             exit 0
           fi
           git commit -m "chore(data): refresh fetched map and photo data"
-          git push origin HEAD:${{ github.ref_name }}
+          # A fetch takes minutes, so the branch has usually moved on underneath
+          # us. Rebase onto whatever landed and try again rather than losing the
+          # download.
+          branch='${{ github.ref_name }}'
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:$branch"; then
+              echo "Pushed on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected, rebasing onto origin/$branch (attempt $attempt)."
+            git fetch origin "$branch"
+            git rebase "origin/$branch" || {
+              # Only data/ is ever written here, so preferring our version of a
+              # conflicting file is always the right call.
+              git checkout --ours -- data || true
+              git add -A data
+              GIT_EDITOR=true git rebase --continue || git rebase --abort
+            }
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not push fetched data after 5 attempts."
+          exit 1

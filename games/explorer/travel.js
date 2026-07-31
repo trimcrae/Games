@@ -201,8 +201,9 @@ function pitched(spr, slope) {
   const h = spr.h + rise;
   const out = new Uint8Array(spr.w * h).fill(TRANSPARENT);
   for (let x = 0; x < spr.w; x++) {
-    // Positive slope lifts the nose (which is to the right); negative drops it.
-    const lift = slope > 0 ? Math.round(x * slope) : Math.round((spr.w - 1 - x) * -slope);
+    // Columns are pushed down, so a positive slope drops the tail and lifts the
+    // nose (which is at the right-hand end); a negative slope does the reverse.
+    const lift = slope > 0 ? Math.round((spr.w - 1 - x) * slope) : Math.round(x * -slope);
     for (let y = 0; y < spr.h; y++) {
       const v = spr.px[y * spr.w + x];
       if (v === TRANSPARENT) continue;
@@ -214,7 +215,7 @@ function pitched(spr, slope) {
 
 // Airliner, nose to the right, on the UI slot: 0 is the white hull, 1 the
 // shaded underside, 2 the window line, 3 the outline. The last two rows are the
-// undercarriage, so a gear-up blit is the same sprite drawn two rows short.
+// undercarriage, so the gear-up airframe is the same buffer two rows short.
 const PLANE = sprite([
   '....3333........................',
   '...330003.......................',
@@ -237,7 +238,7 @@ const PLANE = sprite([
 const PLANE_BODY_H = PLANE.h - 2; // airframe only, gear retracted
 const PLANE_AIRFRAME = { w: PLANE.w, h: PLANE_BODY_H, px: PLANE.px.subarray(0, PLANE.w * PLANE_BODY_H) };
 const PLANE_CLIMB = pitched(PLANE_AIRFRAME, 0.22);
-const PLANE_SINK = pitched(PLANE, -0.1);
+const PLANE_SINK = pitched(PLANE_AIRFRAME, -0.1);
 
 // Saloon car seen from behind: blue body, dark glass, red lamps.
 const CAR = sprite([
@@ -336,6 +337,7 @@ class TravelCutscene {
     this.t = 0;
     this.scroll = 0;
     this.travel = 0;
+    this.exitK = 0;
     this.finished = false;
     this.cue = 0;
     this.cues = this.flying ? this.flightCues() : this.driveCues();
@@ -475,12 +477,12 @@ class TravelCutscene {
 
     // The ground band shrinks from just under half the frame to a far-off
     // sliver, which is most of what sells the climb.
-    const groundTop = Math.round(SH - (1 - alt) * SH * 0.42 - alt * Math.min(16, SH * 0.1));
+    const groundTop = Math.round(SH - (1 - alt) * SH * 0.42 - alt * Math.min(26, SH * 0.17));
 
     this.drawSky(screen, SH, groundTop, alt);
-    if (alt < 0.45) this.drawAirfield(screen, SH, groundTop, alt);
+    if (alt < 0.45) this.drawAirfield(screen, SH, groundTop);
     else this.drawCoast(screen, SH, groundTop);
-    if (alt > 0.3) this.drawClouds(screen, SH, alt);
+    if (alt > 0.3) this.drawClouds(screen, SH, groundTop);
 
     this.drawPlane(screen, SH, ph, alt);
   }
@@ -521,10 +523,11 @@ class TravelCutscene {
       }
     }
 
-    // Sun on the horizon at low level, burning off as you climb. It is dawn on
-    // the runway you leave and dusk on the one you land at, six hours east.
-    const glow = Math.round((1 - alt) * SH * 0.13);
-    if (glow > 2) {
+    // Sun on the horizon at low level: dawn on the runway you leave, dusk on
+    // the one you land at six hours east. Gone by the time the airfield gives
+    // way to the coast below, so the two never overlap into a stripe.
+    const glow = Math.round(Math.max(0, 1 - alt / 0.45) * SH * 0.12);
+    if (glow > 4) {
       const rim = this.arriving ? SLOT.ROOF : SLOT.GOLD;
       screen.fill(0, groundTop - glow, W, glow, px(SLOT.DEEP, 1));
       for (let x = 0; x < W; x += 2) screen.set(x, groundTop - glow, px(SLOT.NIGHT, 2));
@@ -538,7 +541,7 @@ class TravelCutscene {
     return this.t > this.total * 0.55;
   }
 
-  drawAirfield(screen, SH, groundTop, alt) {
+  drawAirfield(screen, SH, groundTop) {
     const W = screen.w;
     const gH = SH - groundTop;
     screen.fill(0, groundTop, W, gH, px(SLOT.LAND, 3));
@@ -576,15 +579,15 @@ class TravelCutscene {
       screen.fill(lx, rwY - 2, 2, 2, px(SLOT.ACCENT, 1));
       screen.fill(lx, rwY + rwH, 2, 2, px(SLOT.ACCENT, 2));
     }
-    void alt;
   }
 
   /** Seen from the cruise: a coastline crawling past a long way below. */
   drawCoast(screen, SH, groundTop) {
     const W = screen.w;
+    const band = SH - groundTop;
     for (let x = 0; x < W; x++) {
       const s = this.scroll * 0.6 + x;
-      const edge = groundTop + 3 + Math.round(2.5 * Math.sin(s * 0.055) + 1.8 * Math.sin(s * 0.017 + 1.3));
+      const edge = groundTop + band * 0.45 + Math.round(3 * Math.sin(s * 0.055) + 2 * Math.sin(s * 0.017 + 1.3));
       const cut = Math.max(groundTop, Math.min(SH - 1, edge));
       screen.fill(x, groundTop, 1, cut - groundTop, px(SLOT.LAND, 3));
       screen.fill(x, cut, 1, SH - cut, px(SLOT.DEEP, 2));
@@ -593,7 +596,7 @@ class TravelCutscene {
     screen.hline(0, groundTop, W, px(SLOT.NIGHT, 3));
   }
 
-  drawClouds(screen, SH, alt) {
+  drawClouds(screen, SH, groundTop) {
     const W = screen.w;
     const top = Math.round(SH * 0.42);
     for (let i = 0; i < 5; i++) {
@@ -601,7 +604,8 @@ class TravelCutscene {
       const span = W + cw * 2;
       const cx = Math.round(W - (((this.scroll * (0.7 + 0.4 * hash(i))) + i * span * 0.31) % span));
       const cy = top + Math.round(hash(i * 7 + 2) * (SH * 0.38));
-      if (cy > SH - 6) continue;
+      // Cloud tops belong in the air, not draped over the coast below.
+      if (cy > groundTop - 5) continue;
       // Grey rather than white: the aircraft is the white thing on this screen.
       screen.fill(cx, cy, cw, 2, px(SLOT.UI, 2));
       screen.fill(cx + 3, cy - 2, Math.max(2, cw - 8), 2, px(SLOT.NIGHT, 1));
@@ -619,18 +623,12 @@ class TravelCutscene {
     const wheelY = rwY + Math.round(rwH * 0.55);
     const cruiseY = Math.round(SH * 0.3);
 
+    // Gear down on the tarmac and on short finals, up in between; nose pitched
+    // for the climb and the descent.
     let art = PLANE;
-    let bodyH = PLANE.h;
-    if (ph.name === 'climb') {
-      art = PLANE_CLIMB;
-      bodyH = PLANE_CLIMB.h;
-    } else if (ph.name === 'cruise') {
-      art = PLANE;
-      bodyH = PLANE_BODY_H;
-    } else if (ph.name === 'descend') {
-      art = ph.k < 0.6 ? PLANE_SINK : PLANE;
-      bodyH = art === PLANE_SINK ? PLANE_SINK.h - 2 : PLANE.h;
-    }
+    if (ph.name === 'climb') art = PLANE_CLIMB;
+    else if (ph.name === 'cruise') art = PLANE_AIRFRAME;
+    else if (ph.name === 'descend' && ph.k < 0.6) art = PLANE_SINK;
 
     let fx;
     switch (ph.name) {
@@ -651,7 +649,7 @@ class TravelCutscene {
     }
 
     const x = Math.round(W * fx - (art.w * s) / 2);
-    const groundY = wheelY - art.h * s + (ph.name === 'climb' ? 0 : 0);
+    const groundY = wheelY - art.h * s;
     const y = Math.round(lerp(groundY, cruiseY, alt) + (alt > 0.9 ? Math.sin(this.t * 2.2) * 1.5 : 0));
 
     // Contrails at height, tyre smoke on the ground.
@@ -669,9 +667,9 @@ class TravelCutscene {
     }
 
     // The airframe is white, so it lives on the UI ramp rather than CHAR.
-    screen.blit(art.px, art.w, Math.min(art.h, bodyH), x, y, { slot: SLOT.UI, scale: s });
+    screen.blit(art.px, art.w, art.h, x, y, { slot: SLOT.UI, scale: s });
     // Anti-collision strobe at the top of the fin.
-    if (Math.floor(this.t * 6) % 2) screen.fill(x + 5 * s, y, 2 * s, 2 * s, px(SLOT.ACCENT, 1));
+    if (Math.floor(this.t * 6) % 2) screen.fill(x + 5 * s, y, s, s, px(SLOT.ACCENT, 0));
   }
 
   // --- drive ---------------------------------------------------------------
@@ -784,31 +782,29 @@ class TravelCutscene {
     const K = SH - horizon;
     const signs = this.route.signs || [this.route.label];
     for (let i = 0; i < signs.length; i++) {
-      const z = 26 - i * 12 - this.travel * 0.55;
-      if (z < 1.3 || z > 30) continue;
-      const y = horizon + K / z;
+      // First sign as you join, second one at the exit.
+      const z = 13 + i * 20 - this.travel * 0.3;
+      if (z < 1.25 || z > 26) continue;
+      const road = horizon + K / z; // the road surface at this depth
       const cx = vpX + ((W / 2 - vpX) * (z - 1)) / Math.max(1, z);
-      const boardW = Math.round((W * 1.15) / z);
-      const boardH = Math.round((SH * 0.55) / z);
-      if (boardW < 8 || boardH < 4) continue;
+      const boardW = Math.round((W * 2.9) / z);
+      const boardH = Math.round((SH * 0.58) / z);
+      if (boardW < 10 || boardH < 5) continue;
+      // Hung a fixed height above the tarmac, so it sweeps up and off the top
+      // of the screen as it passes - which is what makes it feel like driving.
       const bx = Math.round(cx - boardW / 2);
-      const by = Math.round(y - K / z - boardH); // hung above the road surface
+      const by = Math.round(road - (K * 1.15) / z - boardH);
 
-      // Legs down to the shoulder.
-      screen.fill(bx, by + boardH, Math.max(1, Math.round(boardW * 0.04)), Math.round(y - by - boardH), px(SLOT.UI, 2));
-      screen.fill(
-        bx + boardW - Math.max(1, Math.round(boardW * 0.04)),
-        by + boardH,
-        Math.max(1, Math.round(boardW * 0.04)),
-        Math.round(y - by - boardH),
-        px(SLOT.UI, 2),
-      );
+      const leg = Math.max(1, Math.round(boardW * 0.03));
+      const legH = Math.round(road - by - boardH);
+      screen.fill(bx, by + boardH, leg, legH, px(SLOT.UI, 2));
+      screen.fill(bx + boardW - leg, by + boardH, leg, legH, px(SLOT.UI, 2));
 
       screen.fill(bx, by, boardW, boardH, px(SIGN_SLOT, 2));
-      screen.frame(bx, by, boardW, boardH, px(SLOT.UI, 0));
+      screen.frame(bx + 1, by + 1, boardW - 2, boardH - 2, px(SLOT.UI, 0));
       const text = signs[i];
       const tw = screen.textWidth(text);
-      if (tw + 6 <= boardW && boardH >= 11) {
+      if (tw + 8 <= boardW && boardH >= 11) {
         screen.text(text, Math.round(bx + (boardW - tw) / 2), Math.round(by + (boardH - 7) / 2), {
           slot: SLOT.UI,
           shade: 0,

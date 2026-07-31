@@ -441,6 +441,100 @@ Object.assign(ART, {
   ]),
 });
 
+// --- fast travel hubs ------------------------------------------------------
+//
+// Shown when you walk up to a travel hub, the way a landmark panel is shown
+// when you walk up to a landmark. The cut scenes themselves are drawn straight
+// to the framebuffer in travel.js; these are the two still pictures.
+
+Object.assign(ART, {
+  // A terminal pier, the tower, and an airliner waiting on the apron.
+  airportHub: panel([
+    ['r', 0, 0, PANEL_W, PANEL_H, 0],
+    ['d', 0, 0, PANEL_W, 22, 0, 1, 1],
+
+    // control tower behind the pier
+    ['r', 96, 6, 14, 22, 1],
+    ['r', 106, 6, 4, 22, 2],
+    ['o', 96, 6, 14, 22, 3],
+    ['r', 92, 0, 22, 8, 1],
+    ['o', 92, 0, 22, 8, 3],
+    ['r', 94, 2, 18, 4, 3],
+
+    // terminal
+    ['r', 0, 28, PANEL_W, 20, 1],
+    ['r', 0, 28, PANEL_W, 3, 2],
+    ['o', 0, 28, PANEL_W, 20, 3],
+    ['g', 5, 34, 13, 1, 9, 0, 5, 8, 2],
+
+    // apron
+    ['r', 0, 48, PANEL_W, PANEL_H - 48, 1],
+    ['d', 0, 48, PANEL_W, PANEL_H - 48, 1, 2, 1],
+    ['l', 0, 48, PANEL_W - 1, 48, 2],
+    ['l', 0, 84, PANEL_W - 1, 84, 0],
+
+    // airliner, nose to the right
+    ['p', [[16, 57], [86, 57], [97, 63], [86, 69], [16, 69], [9, 63]], 0],
+    ['p', [[18, 65], [86, 65], [92, 67], [86, 69], [18, 69]], 1],
+    ['l', 16, 57, 86, 57, 3],
+    ['l', 16, 69, 86, 69, 3],
+    ['l', 86, 57, 97, 63, 3],
+    ['l', 86, 69, 97, 63, 3],
+    ['l', 16, 57, 9, 63, 3],
+    ['l', 16, 69, 9, 63, 3],
+    ['p', [[9, 57], [17, 57], [24, 36], [16, 36]], 1],
+    ['l', 9, 57, 16, 36, 3],
+    ['l', 17, 57, 24, 36, 3],
+    ['l', 16, 36, 24, 36, 3],
+    ['g', 27, 60, 11, 1, 5, 0, 2, 3, 2],
+    ['p', [[40, 68], [74, 68], [62, 78], [36, 78]], 1],
+    ['l', 40, 68, 36, 78, 3],
+    ['l', 74, 68, 62, 78, 3],
+    ['l', 36, 78, 62, 78, 3],
+    ['r', 52, 69, 16, 7, 2],
+    ['o', 52, 69, 16, 7, 3],
+    ['r', 24, 69, 2, 8, 3],
+    ['r', 63, 76, 2, 5, 3],
+    ['e', 25, 78, 3, 2, 3],
+    ['e', 64, 82, 3, 2, 3],
+  ]),
+
+  // An on-ramp under a green gantry, with the route shield beside it.
+  highwayHub: panel([
+    ...backdrop(50),
+
+    // carriageway running out to the vanishing point
+    ['p', [[57, 50], [71, 50], [PANEL_W, PANEL_H], [0, PANEL_H]], 2],
+    ['l', 57, 50, 0, PANEL_H - 1, 3],
+    ['l', 71, 50, PANEL_W - 1, PANEL_H - 1, 3],
+    ['p', [[62, 54], [66, 54], [67, 60], [61, 60]], 0],
+    ['p', [[60, 65], [68, 65], [70, 74], [58, 74]], 0],
+    ['p', [[57, 79], [71, 79], [74, PANEL_H], [54, PANEL_H]], 0],
+
+    // gantry
+    ['r', 30, 30, 3, 22, 2],
+    ['r', 95, 30, 3, 22, 2],
+    ['r', 20, 10, 88, 18, 1],
+    ['o', 20, 10, 88, 18, 3],
+    ['r', 24, 14, 80, 10, 2],
+    ['g', 28, 17, 9, 1, 8, 0, 5, 4, 0],
+
+    // route shield on its post at the roadside
+    ['r', 105, 44, 3, 20, 3],
+    ['p', [[98, 24], [116, 24], [116, 38], [107, 46], [98, 38]], 1],
+    ['l', 98, 24, 116, 24, 3],
+    ['l', 98, 24, 98, 38, 3],
+    ['l', 116, 24, 116, 38, 3],
+    ['l', 98, 38, 107, 46, 3],
+    ['l', 116, 38, 107, 46, 3],
+    ['r', 101, 29, 12, 5, 3],
+
+    // Kept clear of the gantry legs, which are drawn before these.
+    ...tree(10, 40, 9, 10),
+    ...tree(23, 45, 5, 6),
+  ]),
+});
+
 /** Cartridge cover art for the launcher: a folded map with a pin. */
 export const ICON_ART = {
   w: 64,
