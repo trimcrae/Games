@@ -11,9 +11,19 @@ import { TILE } from '../../engine/tiles.js';
 import { MAT } from '../../engine/geo.js';
 import { box, Menu, TextBox, drawPanel, fitScale } from '../../engine/ui.js';
 import { SFX } from '../../engine/audio.js';
-import { LEVELS } from './levels.js';
+import { LEVELS, LEVEL_BY_ID } from './levels.js';
 import { ART, ICON_ART } from './art.js';
 import { PLAYER, MARKER, MARKER_SEEN, HINT } from './sprites.js';
+import {
+  placeHubs,
+  hubNear,
+  arrivalPixel,
+  routesFrom,
+  routeSummary,
+  destinationName,
+  createTravelCutscene,
+  HUB_SPRITES,
+} from './travel.js';
 
 const ROOT = new URL('../../', import.meta.url);
 const GAME_ID = 'explorer';
@@ -56,6 +66,8 @@ async function buildLevel(level) {
     poi.postX = ox * TILE + TILE / 2;
     poi.postY = oy * TILE + TILE / 2;
   }
+
+  placeHubs(map);
 
   const spawn = nearestOpen(map, map.start ? map.start.x / TILE : map.w / 2, map.start ? map.start.y / TILE : map.h / 2, 80);
   map.spawn = spawn ? { x: spawn[0] * TILE + TILE / 2, y: spawn[1] * TILE + TILE / 2 } : { x: map.w * 4, y: map.h * 4 };
@@ -233,9 +245,10 @@ class SelectScene {
 }
 
 class WorldScene {
-  constructor(level, map) {
+  constructor(level, map, arriveAt = null) {
     this.level = level;
     this.map = map;
+    this.arriveAt = arriveAt;
     this.t = 0;
     this.dir = 'down';
     this.animT = 0;
@@ -248,7 +261,9 @@ class WorldScene {
     this.save = sys.saveFor(GAME_ID);
     const all = this.save.get('found', {});
     this.found = all[this.level.id] || {};
-    const at = this.save.get('at', {})[this.level.id];
+    // Arriving by plane or motorway beats both the saved position and the
+    // level's own start point.
+    const at = this.arriveAt || this.save.get('at', {})[this.level.id];
     this.x = at ? at.x : this.map.spawn.x;
     this.y = at ? at.y : this.map.spawn.y;
     this.viewH = sys.screen.h - 16;
@@ -338,6 +353,15 @@ class WorldScene {
       }
     }
 
+    this.hub = this.near ? null : hubNear(this.map, this.x, this.y);
+
+    if (this.hub && sys.input.pressed('a')) {
+      SFX.confirm(sys.audio);
+      this.remember();
+      sys.push(new DepartureScene(this, this.hub));
+      return;
+    }
+
     if (this.near && sys.input.pressed('a')) {
       const first = !this.found[this.near.id];
       if (first) {
@@ -363,6 +387,15 @@ class WorldScene {
       screen.blit(spr.px, spr.w, spr.h, sx, sy, { slot: SLOT.ACCENT });
     }
 
+    // travel hubs
+    for (const hub of this.map.hubs || []) {
+      const spr = HUB_SPRITES[hub.kind] || HUB_SPRITES.highway;
+      const sx = Math.round(hub.postX - camX - spr.w / 2);
+      const sy = Math.round(hub.postY - camY - spr.h);
+      if (sx < -spr.w || sy < -spr.h || sx > screen.w || sy > viewH) continue;
+      screen.blit(spr.px, spr.w, spr.h, sx, sy, { slot: SLOT.ACCENT });
+    }
+
     // walker
     const frames = PLAYER[this.dir];
     const frame = this.animT > 0 ? frames[Math.floor(this.animT * 8) % frames.length] : frames[0];
@@ -372,14 +405,15 @@ class WorldScene {
     });
 
     // "there is something here" bubble
-    if (this.near) {
+    const prompt = this.near || this.hub;
+    if (prompt) {
       const bob = Math.sin(this.t * 7) * 1.5;
       screen.blit(
         HINT.px,
         HINT.w,
         HINT.h,
-        Math.round(this.near.postX - camX) - 3,
-        Math.round(this.near.postY - camY - 26 + bob),
+        Math.round(prompt.postX - camX) - 3,
+        Math.round(prompt.postY - camY - 26 + bob),
         { slot: SLOT.ACCENT },
       );
     }
@@ -388,7 +422,7 @@ class WorldScene {
     // HUD
     screen.fill(0, viewH, screen.w, 16, px(SLOT.UI, 0));
     screen.hline(0, viewH, screen.w, px(SLOT.UI, 3));
-    const label = this.near ? this.near.name : this.map.name;
+    const label = this.near?.name || this.hub?.name || this.map.name;
     const maxChars = Math.max(6, Math.floor((screen.w - 60) / 6));
     screen.text(label.slice(0, maxChars), 4, viewH + 5, { slot: SLOT.UI, shade: 3 });
     const tally = `${Object.keys(this.found).length}/${this.map.pois.length}`;
@@ -396,7 +430,7 @@ class WorldScene {
 
     // Status sits to the left of the tally so the two never collide.
     const statusX = screen.w - 8 - screen.textWidth(tally) - 20;
-    if (this.near && Math.floor(this.t * 2) % 2) {
+    if ((this.near || this.hub) && Math.floor(this.t * 2) % 2) {
       screen.text(ICON.A, statusX + 14, viewH + 5, { slot: SLOT.UI, shade: 3 });
     } else if (this.running) {
       screen.text('RUN', statusX, viewH + 5, { slot: SLOT.ACCENT, shade: 3 });
@@ -415,6 +449,82 @@ class WorldScene {
       }
     }
     void sys;
+  }
+}
+
+/**
+ * Pick a destination at a travel hub, then hand over to the cutscene. The
+ * destination map is compiled while the cutscene plays, so the journey covers
+ * the load rather than a spinner doing it.
+ */
+class DepartureScene {
+  constructor(world, hub) {
+    this.world = world;
+    this.hub = hub;
+    this.t = 0;
+    // Each hub carries its own routes; a level can have more than one hub.
+    this.routes = hub.routes?.length ? hub.routes : routesFrom(world.level.id);
+    this.menu = new Menu(this.routes, { visible: 4 });
+  }
+
+  update(dt, sys) {
+    this.t += dt;
+    if (sys.input.pressed('b')) {
+      SFX.cancel(sys.audio);
+      sys.pop();
+      return;
+    }
+    if (sys.input.repeated('down')) {
+      this.menu.move(1);
+      SFX.cursor(sys.audio);
+    }
+    if (sys.input.repeated('up')) {
+      this.menu.move(-1);
+      SFX.cursor(sys.audio);
+    }
+    if (sys.input.pressed('a') || sys.input.pressed('start')) {
+      const route = this.menu.current;
+      if (!route) return;
+      SFX.confirm(sys.audio);
+      const level = LEVEL_BY_ID[route.to];
+      const pending = buildLevel(level).catch((err) => {
+        console.error(err);
+        return null;
+      });
+      sys.pop();
+      sys.push(
+        createTravelCutscene(route, sys, async (s) => {
+          const map = await pending;
+          if (!map) {
+            s.pop();
+            return;
+          }
+          s.transitionTo((s2) => s2.replace(new WorldScene(level, map, arrivalPixel(map, route))), { duration: 0.3 });
+        }),
+      );
+    }
+  }
+
+  draw(screen) {
+    screen.clear(px(SLOT.UI, 0));
+    screen.fill(0, 0, screen.w, 11, px(SLOT.UI, 3));
+    screen.text(this.hub.name.slice(0, Math.floor(screen.w / 6) - 1), 4, 2, { slot: SLOT.UI, shade: 0 });
+
+    let y = 16;
+    for (const line of wrapText(this.hub.blurb || '', screen.w - 12).slice(0, 2)) {
+      screen.text(line, 6, y, { slot: SLOT.UI, shade: 2 });
+      y += 9;
+    }
+
+    const listY = y + 8;
+    box(screen, 2, listY - 5, screen.w - 4, screen.h - listY - 8);
+    this.menu.draw(screen, 14, listY, (r) => destinationName(r), { cursorTime: this.t, lineHeight: 18 });
+    // The journey line sits under each destination, dimmer.
+    const end = Math.min(this.menu.items.length, this.menu.top + this.menu.visible);
+    for (let i = this.menu.top; i < end; i++) {
+      screen.text(routeSummary(this.menu.items[i]), 14, listY + (i - this.menu.top) * 18 + 9, { slot: SLOT.UI, shade: 1 });
+    }
+    screen.text('B: STAY HERE', 4, screen.h - 9, { slot: SLOT.UI, shade: 2 });
   }
 }
 

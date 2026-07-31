@@ -356,7 +356,7 @@ function magick(args) {
 export const TONE = { mode: 'floyd', contrast: 1.45, gamma: 1.15 };
 
 /** Colour panels: an adaptive palette this size, error-diffused. */
-export const COLOUR = { colors: 96, contrast: 1.32, gamma: 1.06, saturation: 1.22 };
+export const COLOUR = { colors: 128, contrast: 1.2, gamma: 1.02, saturation: 1.12 };
 
 /** Larger working copy kept in the repo so tone curves can be retuned offline. */
 const SRC = { w: 256, h: 176 };
