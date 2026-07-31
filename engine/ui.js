@@ -160,20 +160,28 @@ export class Menu {
  * Draw an art panel with a border. Colour panels index the console's image
  * palette region, so the caller must have installed the palette first.
  */
-export function drawPanel(screen, art, x, y, { slot = SLOT.UI, border = true } = {}) {
+export function drawPanel(screen, art, x, y, { slot = SLOT.UI, border = true, scale = 1 } = {}) {
   const a = decodeArt(art);
   if (!a) return null;
-  if (border) screen.frame(x - 1, y - 1, a.w + 2, a.h + 2, px(slot, 3));
+  if (border) screen.frame(x - 1, y - 1, a.w * scale + 2, a.h * scale + 2, px(slot, 3));
   if (a.mode === 'image') {
     if (!a.offsetPx) {
       a.offsetPx = new Uint8Array(a.px.length);
       for (let i = 0; i < a.px.length; i++) a.offsetPx[i] = IMAGE_BASE + a.px[i];
     }
-    screen.blit(a.offsetPx, a.w, a.h, x, y, { raw: true });
+    screen.blit(a.offsetPx, a.w, a.h, x, y, { raw: true, scale });
   } else {
-    screen.blit(a.px, a.w, a.h, x, y, { slot });
+    screen.blit(a.px, a.w, a.h, x, y, { slot, scale });
   }
   return a;
+}
+
+/**
+ * Largest whole-number scale at which `art` still fits in a box. Panels are
+ * drawn as big as the screen allows, which is the point of the bigger screen.
+ */
+export function fitScale(art, maxW, maxH) {
+  return Math.max(1, Math.min(Math.floor(maxW / art.w), Math.floor(maxH / art.h)));
 }
 
 /** Horizontal progress pip row, e.g. landmarks found. */

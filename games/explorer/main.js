@@ -9,7 +9,7 @@ import { compileMap, nearestOpen } from '../../engine/geo.js';
 import { drawMap, cameraFor, minimap } from '../../engine/tilemap.js';
 import { TILE } from '../../engine/tiles.js';
 import { MAT } from '../../engine/geo.js';
-import { box, Menu, TextBox, drawPanel } from '../../engine/ui.js';
+import { box, Menu, TextBox, drawPanel, fitScale } from '../../engine/ui.js';
 import { SFX } from '../../engine/audio.js';
 import { LEVELS } from './levels.js';
 import { ART, ICON_ART } from './art.js';
@@ -146,19 +146,24 @@ class TitleScene {
   }
 
   draw(screen) {
+    const h = screen.h;
     screen.clear(px(SLOT.UI, 0));
-    screen.fill(0, 30, screen.w, 2, px(SLOT.UI, 3));
-    screen.textCentred('WORLD', 12, { slot: SLOT.UI, shade: 3, scale: 2 });
-    screen.textCentred('WALKER', 40, { slot: SLOT.UI, shade: 3, scale: 2 });
-    screen.fill(0, 60, screen.w, 2, px(SLOT.UI, 3));
+
+    const titleY = Math.round(h * 0.14);
+    screen.fill(0, titleY - 10, screen.w, 2, px(SLOT.UI, 3));
+    screen.textCentred('WORLD', titleY, { slot: SLOT.UI, shade: 3, scale: 2 });
+    screen.textCentred('WALKER', titleY + 20, { slot: SLOT.UI, shade: 3, scale: 2 });
+    screen.fill(0, titleY + 40, screen.w, 2, px(SLOT.UI, 3));
 
     const found = Object.values(this.save?.get('found', {}) || {}).reduce((n, set) => n + Object.keys(set).length, 0);
     const total = LEVELS.reduce((n, l) => n + l.pois.length, 0);
-    screen.textCentred(`${ICON.STAR} ${found} / ${total} LANDMARKS`, 74, { slot: SLOT.UI, shade: 2 });
-    screen.textCentred('WALK REAL PLACES', 92, { slot: SLOT.UI, shade: 2 });
+    screen.textCentred(`${ICON.STAR} ${found} / ${total} LANDMARKS`, Math.round(h * 0.52), { slot: SLOT.UI, shade: 2 });
+    screen.textCentred('WALK REAL PLACES', Math.round(h * 0.63), { slot: SLOT.UI, shade: 2 });
 
-    if (Math.floor(this.t * 2) % 2) screen.textCentred('PRESS START', 116, { slot: SLOT.UI, shade: 3 });
-    screen.textCentred('MAP DATA (C) OPENSTREETMAP', screen.h - 10, { slot: SLOT.UI, shade: 1 });
+    if (Math.floor(this.t * 2) % 2) {
+      screen.textCentred('PRESS START', Math.round(h * 0.79), { slot: SLOT.UI, shade: 3 });
+    }
+    screen.textCentred('MAP DATA (C) OPENSTREETMAP', h - 10, { slot: SLOT.UI, shade: 1 });
   }
 }
 
@@ -213,14 +218,17 @@ class SelectScene {
     screen.text('CHOOSE A PLACE', 5, 3, { slot: SLOT.UI, shade: 0 });
 
     const level = this.menu.current;
-    box(screen, 4, 18, screen.w - 8, 46);
-    screen.text(level.name, 10, 24, { slot: SLOT.UI, shade: 3 });
-    screen.text(level.subtitle, 10, 36, { slot: SLOT.UI, shade: 2 });
+    const infoY = 18;
+    const infoH = 46;
+    box(screen, 4, infoY, screen.w - 8, infoH);
+    screen.text(level.name, 10, infoY + 6, { slot: SLOT.UI, shade: 3 });
+    screen.text(level.subtitle, 10, infoY + 18, { slot: SLOT.UI, shade: 2 });
     const found = this.foundIn(level);
-    screen.text(`${ICON.PIN} ${found}/${level.pois.length} FOUND`, 10, 50, { slot: SLOT.UI, shade: 3 });
+    screen.text(`${ICON.PIN} ${found}/${level.pois.length} FOUND`, 10, infoY + 32, { slot: SLOT.UI, shade: 3 });
 
-    box(screen, 4, 70, screen.w - 8, screen.h - 76);
-    this.menu.draw(screen, 16, 78, (l) => `${l.name}`, { cursorTime: this.t, lineHeight: 12 });
+    const listY = infoY + infoH + 6;
+    box(screen, 4, listY, screen.w - 8, screen.h - listY - 4);
+    this.menu.draw(screen, 16, listY + 8, (l) => `${l.name}`, { cursorTime: this.t, lineHeight: 12 });
   }
 }
 
@@ -290,9 +298,13 @@ class WorldScene {
     }
 
     let [dx, dy] = sys.input.axis();
+    // Greece is a whole town rather than a campus; holding B to run keeps the
+    // long stretches between landmarks from becoming a chore.
+    const running = sys.input.isDown('b');
+    this.running = running;
     if (dx || dy) {
       const len = Math.hypot(dx, dy) || 1;
-      const speed = this.map.walkSpeed * dt;
+      const speed = this.map.walkSpeed * (running ? 2.1 : 1) * dt;
       const nx = (dx / len) * speed;
       const ny = (dy / len) * speed;
 
@@ -301,9 +313,9 @@ class WorldScene {
       if (!this.blocked(this.x, this.y + ny)) this.y += ny;
 
       this.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-      this.animT += dt;
+      this.animT += dt * (running ? 1.7 : 1);
       this.stepT += dt;
-      if (this.stepT > 0.3) {
+      if (this.stepT > (running ? 0.18 : 0.3)) {
         this.stepT = 0;
         SFX.step(sys.audio);
       }
@@ -377,12 +389,17 @@ class WorldScene {
     screen.fill(0, viewH, screen.w, 16, px(SLOT.UI, 0));
     screen.hline(0, viewH, screen.w, px(SLOT.UI, 3));
     const label = this.near ? this.near.name : this.map.name;
-    screen.text(label.slice(0, 20), 4, viewH + 5, { slot: SLOT.UI, shade: 3 });
+    const maxChars = Math.max(6, Math.floor((screen.w - 60) / 6));
+    screen.text(label.slice(0, maxChars), 4, viewH + 5, { slot: SLOT.UI, shade: 3 });
     const tally = `${Object.keys(this.found).length}/${this.map.pois.length}`;
     screen.text(tally, screen.w - 4 - screen.textWidth(tally), viewH + 5, { slot: SLOT.UI, shade: 3 });
 
+    // Status sits to the left of the tally so the two never collide.
+    const statusX = screen.w - 8 - screen.textWidth(tally) - 20;
     if (this.near && Math.floor(this.t * 2) % 2) {
-      screen.text(ICON.A, screen.w - 8 - screen.textWidth(tally) - 12, viewH + 5, { slot: SLOT.UI, shade: 3 });
+      screen.text(ICON.A, statusX + 14, viewH + 5, { slot: SLOT.UI, shade: 3 });
+    } else if (this.running) {
+      screen.text('RUN', statusX, viewH + 5, { slot: SLOT.ACCENT, shade: 3 });
     }
 
     // arrival banner
@@ -411,8 +428,23 @@ class LandmarkScene {
     this.text = null;
   }
 
+  /** Three lines of caption on a tall screen, two when there is no room. */
+  static lineCount(h) {
+    return h < 170 ? 2 : 3;
+  }
+
+  resized(w, h) {
+    const page = this.text?.page ?? 0;
+    this.text = new TextBox(this.poi.text, { width: w - 12, lines: LandmarkScene.lineCount(h), speed: 52 });
+    this.text.page = Math.min(page, this.text.pages.length - 1);
+  }
+
   enter(sys) {
-    this.text = new TextBox(this.poi.text, { width: sys.screen.w - 12, lines: 3, speed: 52 });
+    this.text = new TextBox(this.poi.text, {
+      width: sys.screen.w - 12,
+      lines: LandmarkScene.lineCount(sys.screen.h),
+      speed: 52,
+    });
     if (this.isNew) SFX.found(sys.audio);
     landmarkArt(this.poi, Boolean(sys.look.colour)).then((art) => {
       this.art = art;
@@ -444,28 +476,41 @@ class LandmarkScene {
 
   draw(screen) {
     screen.clear(px(SLOT.UI, 0));
-    screen.fill(0, 0, screen.w, 11, px(SLOT.UI, 3));
-    screen.text(this.poi.name.slice(0, 25), 4, 2, { slot: SLOT.UI, shade: 0 });
+    const headerH = 11;
+    screen.fill(0, 0, screen.w, headerH, px(SLOT.UI, 3));
+    screen.text(this.poi.name.slice(0, Math.floor(screen.w / 6) - 1), 4, 2, { slot: SLOT.UI, shade: 0 });
 
-    const artY = 12;
+    // The picture gets the whole screen below the header and the text box sits
+    // on top of it. Stacking them instead would mean either a postage stamp on
+    // a small screen or two lines of caption on a large one.
+    const boxH = LandmarkScene.lineCount(screen.h) * 9 + 13;
+    const boxY = screen.h - boxH;
+    const artTop = headerH;
+    const artBox = { w: screen.w, h: screen.h - artTop };
+
     if (this.art) {
-      const a = drawPanel(screen, this.art, Math.round((screen.w - this.art.w) / 2), artY, { slot: SLOT.UI });
+      const scale = fitScale(this.art, artBox.w, artBox.h);
+      const aw = this.art.w * scale;
+      const ah = this.art.h * scale;
+      const ax = Math.round((screen.w - aw) / 2);
+      const ay = artTop + Math.round((artBox.h - ah) / 2);
+      // Clipped, so an oversized panel on a small screen crops rather than
+      // spilling over the header.
+      screen.clip(0, artTop, screen.w, artBox.h);
+      drawPanel(screen, this.art, ax, ay, { slot: SLOT.UI, scale, border: false });
+      screen.noClip();
       if (this.credit) {
-        // Captioned over the foot of the picture: there is no room for a
-        // separate line between an 88px panel and the text box.
-        const cy = artY + (a?.h || 88) - 8;
+        const cy = boxY - 9;
         screen.fill(0, cy - 1, screen.w, 9, px(SLOT.UI, 0));
-        screen.text(this.credit.slice(0, 26), 4, cy, { slot: SLOT.UI, shade: 2 });
+        screen.text(this.credit.slice(0, Math.floor(screen.w / 6) - 1), 3, cy, { slot: SLOT.UI, shade: 2 });
       }
     } else {
-      box(screen, 14, artY, screen.w - 28, 88);
-      screen.textCentred('...', 54, { slot: SLOT.UI, shade: 2 });
+      screen.textCentred('...', artTop + Math.round(artBox.h / 3), { slot: SLOT.UI, shade: 2 });
     }
 
-    const boxY = screen.h - 40;
-    box(screen, 0, boxY, screen.w, 40);
+    box(screen, 0, boxY, screen.w, boxH);
     this.text.draw(screen, 6, boxY + 6);
-    this.text.drawMore(screen, screen.w - 12, boxY + 31, this.t);
+    this.text.drawMore(screen, screen.w - 12, boxY + boxH - 11, this.t);
   }
 }
 
@@ -477,14 +522,20 @@ class PauseScene {
     this.tab = 0;
   }
 
+  resized(w, h, sys) {
+    this.enter(sys);
+  }
+
   enter(sys) {
     this.map = this.world.map;
     this.mini = minimap(this.map, sys.screen.w - 16, sys.screen.h - 46, (matId) => {
-      if (matId === MAT.water || matId === MAT.waterDeep || matId === MAT.marsh) return px(SLOT.UI, 2);
-      if (matId === MAT.building || matId === MAT.buildingTall) return px(SLOT.UI, 3);
-      if (matId === MAT.road || matId === MAT.parking) return px(SLOT.UI, 2);
-      if (matId === MAT.forest) return px(SLOT.UI, 2);
-      return px(SLOT.UI, 0);
+      if (matId === MAT.water || matId === MAT.waterDeep || matId === MAT.marsh) return px(SLOT.WATER, 2);
+      if (matId === MAT.building || matId === MAT.buildingTall) return px(SLOT.ROOF, 3);
+      if (matId === MAT.road || matId === MAT.parking || matId === MAT.rail) return px(SLOT.ROAD, 2);
+      if (matId === MAT.forest) return px(SLOT.TREE, 2);
+      if (matId === MAT.sand) return px(SLOT.SAND, 1);
+      if (matId === MAT.path || matId === MAT.plaza) return px(SLOT.ROAD, 0);
+      return px(SLOT.LAND, 1);
     });
     this.list = new Menu(this.map.pois, { visible: 6 });
   }

@@ -12,6 +12,7 @@ import { compileMap, nearestOpen } from '../engine/geo.js';
 import { drawMap, cameraFor } from '../engine/tilemap.js';
 import { TILE } from '../engine/tiles.js';
 import { decodeArt } from '../engine/art.js';
+import { drawPanel } from '../engine/ui.js';
 import { LEVELS } from '../games/explorer/levels.js';
 import { PLAYER, MARKER } from '../games/explorer/sprites.js';
 import { encodePNG, montage } from './png.mjs';
@@ -44,7 +45,7 @@ export function buildLevel(level) {
 function toRGB(screen, look) {
   const rgb = new Uint8Array(screen.w * screen.h * 3);
   for (let i = 0; i < screen.buf.length; i++) {
-    const [r, g, b] = rgbOf(look, screen.buf[i]);
+    const [r, g, b] = rgbOf(look, screen.buf[i], screen.imagePalette);
     rgb[i * 3] = r;
     rgb[i * 3 + 1] = g;
     rgb[i * 3 + 2] = b;
@@ -114,13 +115,17 @@ function panel(art, name, creditLine, body, w = 160, h = 144) {
   const s = new Screen(w, h);
   s.clear(px(SLOT.UI, 0));
   const a = decodeArt(art);
+  s.imagePalette = a.pal || null;
   const ax = Math.round((w - a.w) / 2);
   const ay = 12;
-  s.frame(ax - 2, ay - 2, a.w + 4, a.h + 4, px(SLOT.UI, 3));
-  s.blit(a.px, a.w, a.h, ax, ay, { slot: SLOT.UI });
+  drawPanel(s, a, ax, ay, { slot: SLOT.UI });
   s.text(name, 4, 3, { slot: SLOT.UI, shade: 3 });
-  if (creditLine) s.text(creditLine, 4, ay + a.h + 5, { slot: SLOT.UI, shade: 2 });
-  let y = ay + a.h + 15;
+  if (creditLine) {
+    const cy = ay + a.h - 8;
+    s.fill(0, cy - 1, w, 9, px(SLOT.UI, 0));
+    s.text(creditLine, 4, cy, { slot: SLOT.UI, shade: 2 });
+  }
+  let y = ay + a.h + 8;
   for (const line of body) {
     s.text(line, 4, y, { slot: SLOT.UI, shade: 3 });
     y += 9;

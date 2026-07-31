@@ -96,7 +96,7 @@ export const LEVELS = [
       {
         id: 'stadium',
         name: 'STANFORD STADIUM',
-        at: [37.43447, -122.16116],
+        at: [37.43392, -122.16188],
         photo: 'stanford-stadium',
         art: 'stadium',
         text: [
@@ -241,7 +241,7 @@ export const LEVELS = [
       {
         id: 'long-pond',
         name: 'LONG POND',
-        at: [43.28864, -77.69395],
+        at: [43.28672, -77.69137],
         photo: 'long-pond',
         art: 'pond',
         text: [
@@ -304,3 +304,121 @@ export const LEVELS = [
 ];
 
 export const LEVEL_BY_ID = Object.fromEntries(LEVELS.map((l) => [l.id, l]));
+
+// --- fast travel -----------------------------------------------------------
+//
+// The three places are real and unevenly spaced. RIT and Greece are both in
+// Monroe County, about 25 km apart and joined by 390, so the link between them
+// is a drive. Stanford is 4,000 km away in California, so the only honest link
+// is a flight, and both New York maps therefore need an air hub of their own.
+// Greater Rochester International (ROC) is the airport at the New York end: it
+// sits between the two, just south of the town of Greece and just north of RIT.
+//
+// Every `at` and every `arriveAt` below was read back out of the compiled
+// tilemap and lands on a walkable road, path or parking tile inside the level's
+// bbox. Move one and it needs re-checking, or the hub becomes unreachable.
+
+export const TRAVEL_HUBS = {
+  stanford: [
+    {
+      id: 'galvez-coach',
+      kind: 'airport',
+      name: 'GALVEZ COACH STOP',
+      at: [37.43381, -122.16344],
+      blurb:
+        'The coach kerb on Galvez Street, below Stanford Stadium. Airport runs leave from here: south down 101 to San Jose, or north up the peninsula to San Francisco.',
+      routes: [
+        {
+          to: 'rit',
+          kind: 'flight',
+          label: 'SJC -> ROC',
+          minutes: 380,
+          arriveAt: [43.08375, -77.67512],
+        },
+        {
+          to: 'greece',
+          kind: 'flight',
+          label: 'SFO -> ROC',
+          minutes: 355,
+          arriveAt: [43.25893, -77.69951],
+        },
+      ],
+    },
+  ],
+
+  rit: [
+    {
+      id: 'transit-plaza',
+      kind: 'airport',
+      name: 'RIT TRANSIT PLAZA',
+      at: [43.08343, -77.67512],
+      blurb:
+        'The bus loop below the Student Alumni Union, where the airport shuttle waits at the start and end of every term. ROC is fifteen minutes north up 390.',
+      routes: [
+        {
+          to: 'stanford',
+          kind: 'flight',
+          label: 'ROC -> SFO',
+          minutes: 365,
+          arriveAt: [37.43414, -122.16338],
+        },
+      ],
+    },
+    {
+      id: 'lomb-gate',
+      kind: 'highway',
+      name: 'LOMB MEMORIAL DR',
+      at: [43.08826, -77.67431],
+      blurb:
+        'The north gate of campus. Lomb Memorial Drive runs out to Jefferson Road, NY-252, and from there it is one junction east to I-390.',
+      routes: [
+        {
+          to: 'greece',
+          kind: 'drive',
+          label: 'I-390 N',
+          minutes: 28,
+          signs: ['I-390 N', 'NY-104 RIDGE RD'],
+          arriveAt: [43.20445, -77.67672],
+        },
+      ],
+    },
+  ],
+
+  greece: [
+    {
+      id: 'ridge-interchange',
+      kind: 'highway',
+      name: 'RIDGE RD INTERCHANGE',
+      at: [43.2037, -77.67672],
+      blurb:
+        'Where 390 crosses Ridge Road, NY-104, at the south-east corner of the town. Southbound it runs down the west side of Rochester to Henrietta.',
+      routes: [
+        {
+          to: 'rit',
+          kind: 'drive',
+          label: 'I-390 S',
+          minutes: 26,
+          signs: ['I-390 S', 'NY-252 JEFFERSON RD'],
+          arriveAt: [43.08847, -77.67401],
+        },
+      ],
+    },
+    {
+      id: 'tofany-coach',
+      kind: 'airport',
+      name: 'TOWN HALL PARK+RIDE',
+      at: [43.25904, -77.69863],
+      blurb:
+        'The lot on Vince Tofany Boulevard, beside the town hall. Leave the car here and the airport coach takes you the eight miles south to ROC.',
+      routes: [
+        {
+          to: 'stanford',
+          kind: 'flight',
+          label: 'ROC -> SFO',
+          minutes: 375,
+          arriveAt: [37.43414, -122.16338],
+        },
+      ],
+    },
+  ],
+};

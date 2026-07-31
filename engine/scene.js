@@ -37,14 +37,33 @@ export class Handheld {
 
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.ctx.imageSmoothingEnabled = false;
-    canvas.width = width;
-    canvas.height = height;
-    this.image = this.ctx.createImageData(width, height);
-    this.out32 = new Uint32Array(this.image.data.buffer);
+    this.allocate(width, height);
 
     this.setLook(this.settings.get('look', look));
     this.audio.setEnabled(this.settings.get('sound', true));
     this.detachKeys = attachKeyboard(this.input);
+  }
+
+  /** (Re)allocate the framebuffer and the ImageData it is presented through. */
+  allocate(width, height) {
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.screen = new Screen(width, height);
+    this.image = this.ctx.createImageData(width, height);
+    this.out32 = new Uint32Array(this.image.data.buffer);
+    this.ctx.imageSmoothingEnabled = false;
+  }
+
+  /**
+   * Change the logical resolution. The shell calls this when the viewport
+   * changes shape: rather than stretching a fixed grid, the console takes a
+   * resolution that fills the space at a whole-number pixel scale.
+   * Scenes that cache layout can implement `resized(w, h, sys)`.
+   */
+  resize(width, height) {
+    if (width === this.screen.w && height === this.screen.h) return;
+    this.allocate(width, height);
+    for (const scene of this.stack) scene.resized?.(width, height, this);
   }
 
   // --- looks ---------------------------------------------------------------

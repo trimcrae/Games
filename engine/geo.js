@@ -163,6 +163,8 @@ function markCentreline(pts, w, h, mark) {
  * @param {Array} def.features
  * @param {Array} [def.pois]
  * @param {[number,number]} [def.start] spawn point [lat,lon]
+ * @param {number} [def.buildingSlot] palette slot for roofs, so a brick campus
+ *   and a sandstone one do not come out the same colour
  */
 export function compileMap(def) {
   const mpt = def.metersPerTile;
@@ -227,7 +229,7 @@ export function compileMap(def) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       const m = MATERIALS[mat[i]];
-      slots[i] = m.slot;
+      slots[i] = m.group === 'building' && def.buildingSlot !== undefined ? def.buildingSlot : m.slot;
       solid[i] = m.solid ? 1 : m.solidIf && m.solidIf(x, y) ? 1 : 0;
 
       if (m.edge) {

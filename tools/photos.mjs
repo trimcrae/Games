@@ -8,9 +8,16 @@
 //   id       output name in data/photos/<id>.json
 //   wiki     English Wikipedia article title, lead image is preferred
 //   search   Commons full-text search used if the article has no usable image
+//            (up to three queries; later ones only run if earlier ones came up short)
+//   must     term every Commons search hit has to name, on top of the usual
+//            relevance guard. Use it where a generic query would otherwise
+//            accept the right kind of thing in the wrong place — a historical
+//            society museum in Tonawanda is not the one in Greece. Not applied
+//            to `wiki` lead images, which are already on topic.
+//   gravity  crop anchor for the panel (ImageMagick -gravity, default center)
 //   tune     per-image tone controls passed to tools/pixelize.mjs
 
-export const PANEL = { w: 128, h: 88 };
+export const PANEL = { w: 176, h: 120 };
 
 export const PHOTOS = [
   // --- Stanford ------------------------------------------------------------
@@ -27,9 +34,11 @@ export const PHOTOS = [
   { id: 'engineering-quad', search: ['Huang Engineering Center Stanford', 'Stanford engineering quad'] },
 
   // --- RIT -----------------------------------------------------------------
-  { id: 'rit-campus', wiki: 'Rochester Institute of Technology', search: 'Rochester Institute of Technology campus' },
-  { id: 'rit-sentinel', search: ['Sentinel Paley sculpture', 'Albert Paley Sentinel', 'Paley sculpture Rochester'] },
-  { id: 'rit-sau', search: ['Student Alumni Union RIT', 'RIT Student Alumni Union'] },
+  { id: 'rit-campus', wiki: 'Rochester Institute of Technology', search: ['Rochester Institute of Technology campus', 'RIT campus Henrietta New York', 'RIT building Rochester Institute of Technology'] },
+  // The sculpture is always credited to Albert Paley, so require his name: a
+  // bare "sculpture" hit is as likely to be somebody else's work in a park.
+  { id: 'rit-sentinel', search: ['Albert Paley Sentinel sculpture', 'Sentinel sculpture Rochester Institute of Technology', 'Albert Paley Sentinel RIT'], must: 'paley' },
+  { id: 'rit-sau', search: ['RIT Student Alumni Union', 'Student Alumni Union Rochester Institute of Technology', 'RIT building Student Alumni Union'], must: 'union' },
   { id: 'rit-golisano', search: ['Golisano College computing RIT', 'Golisano Hall RIT'] },
   { id: 'rit-tiger', search: ['RIT Tiger statue', 'Tiger statue Rochester Institute'] },
   { id: 'rit-quarter-mile', search: ['RIT Quarter Mile', 'RIT campus quad brick'] },
@@ -43,9 +52,11 @@ export const PHOTOS = [
   // --- Greece, NY ----------------------------------------------------------
   { id: 'greece-ridge', wiki: 'The Mall at Greece Ridge', search: 'Mall at Greece Ridge' },
   { id: 'braddock-bay', wiki: 'Braddock Bay', search: 'Braddock Bay New York' },
-  { id: 'long-pond', search: 'Long Pond Greece New York' },
-  { id: 'greece-town-hall', search: 'Greece Town Hall Monroe County New York' },
-  { id: 'greece-historical', search: 'Greece Historical Society museum New York' },
-  { id: 'schallers', search: "Schaller's Drive-In Rochester New York" },
-  { id: 'braddock-bay-park', search: 'Braddock Bay Park marina Greece New York' },
+  { id: 'long-pond', search: ['Long Pond Greece New York', 'Long Pond Monroe County New York', 'Long Pond Rochester New York'], must: 'pond' },
+  { id: 'greece-town-hall', search: ['Greece New York town hall', 'Greece Town Hall Monroe County New York'], must: 'greece' },
+  // Without `must` this matched the Tonawanda-Kenmore historical society museum,
+  // which is a 90-minute drive from the landmark it was standing in for.
+  { id: 'greece-historical', search: ['Greece Historical Society museum', 'Greece Historical Society Rochester New York', 'Greece New York museum'], must: 'greece' },
+  { id: 'schallers', wiki: "Schaller's Drive-In", search: ["Schaller's Drive-In Rochester New York", 'Schallers Drive In Rochester', "Schaller's restaurant Greece New York"], must: 'schaller' },
+  { id: 'braddock-bay-park', search: ['Braddock Bay Park Greece New York', 'Braddock Bay marina boat launch', 'Braddock Bay Park New York'], must: 'braddock' },
 ];

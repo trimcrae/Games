@@ -3,7 +3,8 @@
 
 import { SLOT, px } from './gfx.js';
 import { ICON } from './font.js';
-import { Menu, box, drawPanel } from './ui.js';
+import { Menu, box, drawPanel, fitScale } from './ui.js';
+import { decodeArt } from './art.js';
 import { SFX } from './audio.js';
 
 /** Falling logo, chime, then the launcher. Any button skips it. */
@@ -53,6 +54,7 @@ export class BootScene {
         screen.textCentred('PRESS START', screen.h - 28, { slot: SLOT.UI, shade: 3 });
       }
     }
+    void 0;
     void sys;
   }
 }
@@ -119,33 +121,39 @@ export class LauncherScene {
 
     const cart = this.menu.current;
 
-    // cover art for the highlighted cartridge
-    const artY = 18;
+    // Cover art fills whatever room the list does not need, at a whole scale.
+    const listH = Math.min(70, Math.max(40, this.menu.visible * 12 + 16));
+    const listY = screen.h - listH;
+    const artTop = 16;
+    const artBox = { w: screen.w - 16, h: listY - artTop - 12 };
+
     if (cart?.icon) {
-      const a = drawPanel(screen, cart.icon, Math.round((screen.w - 64) / 2), artY, { slot: SLOT.UI });
-      void a;
+      const icon = decodeArt(cart.icon);
+      const scale = fitScale(icon, artBox.w, artBox.h);
+      drawPanel(screen, icon, Math.round((screen.w - icon.w * scale) / 2), artTop + Math.round((artBox.h - icon.h * scale) / 2), {
+        slot: SLOT.UI,
+        scale,
+      });
     } else {
-      box(screen, Math.round((screen.w - 64) / 2), artY, 64, 48);
+      box(screen, Math.round((screen.w - 64) / 2), artTop, 64, 48);
     }
 
-    if (cart) {
-      screen.textCentred(cart.subtitle || '', artY + 52, { slot: SLOT.UI, shade: 2 });
-    }
+    // Clear of the list box, which starts at listY - 5.
+    if (cart) screen.textCentred(cart.subtitle || '', listY - 16, { slot: SLOT.UI, shade: 2 });
 
-    // list
-    const listY = artY + 64;
     box(screen, 2, listY - 5, screen.w - 4, screen.h - listY + 3);
     this.menu.draw(screen, 12, listY, (c) => c.title, { cursorTime: this.t });
 
+    const midY = Math.round(screen.h / 2);
     if (this.loading) {
-      box(screen, 16, 58, screen.w - 32, 30);
-      screen.textCentred('LOADING', 66, { slot: SLOT.UI, shade: 3 });
-      screen.textCentred(this.loading.slice(0, 22), 76, { slot: SLOT.UI, shade: 2 });
+      box(screen, 16, midY - 15, screen.w - 32, 30);
+      screen.textCentred('LOADING', midY - 7, { slot: SLOT.UI, shade: 3 });
+      screen.textCentred(this.loading.slice(0, 22), midY + 3, { slot: SLOT.UI, shade: 2 });
     } else if (this.error) {
-      box(screen, 8, 52, screen.w - 16, 40);
-      screen.textCentred('CARTRIDGE ERROR', 58, { slot: SLOT.UI, shade: 3 });
-      screen.text(this.error.slice(0, 25), 12, 70, { slot: SLOT.UI, shade: 2 });
-      screen.text(this.error.slice(25, 50), 12, 79, { slot: SLOT.UI, shade: 2 });
+      box(screen, 8, midY - 20, screen.w - 16, 40);
+      screen.textCentred('CARTRIDGE ERROR', midY - 14, { slot: SLOT.UI, shade: 3 });
+      screen.text(this.error.slice(0, 25), 12, midY - 2, { slot: SLOT.UI, shade: 2 });
+      screen.text(this.error.slice(25, 50), 12, midY + 7, { slot: SLOT.UI, shade: 2 });
     }
   }
 }

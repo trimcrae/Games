@@ -1,5 +1,59 @@
-// Builds the physical handheld around the canvas: d-pad, A/B, Start/Select,
-// and the system strip. Touch, mouse and pen all arrive as pointer events.
+// Builds the handheld around the canvas: a screen across the top half of the
+// viewport, then the controls — d-pad, A/B, START/SELECT and the system strip.
+// Touch, mouse and pen all arrive as pointer events.
+//
+// The screen is the point of the device, so it is sized first and the console
+// is built to fit it (see pickSize): the framebuffer resolution is derived from
+// the space available at a whole-number pixel scale, rather than a fixed
+// resolution being stretched to fit.
+
+const TILE = 8; // framebuffer tile grid: keep logical sizes on it
+const TARGET_W = 208; // aim for a logical width near this, so pixels stay chunky
+const MIN_SCALE = 2;
+const MAX_SCALE = 6;
+const MIN_W = 160;
+const MAX_W = 320;
+// 128 rather than the Game Boy's 144: on a short phone (320x568) the extra two
+// tiles of slack are what keeps the scale at 2 instead of collapsing to 1.
+const MIN_H = 128;
+const MAX_H = 288;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const snap = (v) => Math.max(TILE, Math.round(v / TILE) * TILE);
+
+/**
+ * Choose a framebuffer size for a screen area of `availW` x `availH` CSS px.
+ *
+ * Pixel art at a fractional scale shimmers, so the scale is always an integer
+ * and the resolution floats instead: pick the scale that lands the logical
+ * width near TARGET_W, then derive width and height from the area, on the 8px
+ * tile grid. The result never overflows the area — any remainder (at most a
+ * tile) shows as bezel.
+ *
+ * @returns {{width:number, height:number, scale:number}}
+ */
+export function pickSize(availW, availH) {
+  const aw = Math.max(1, availW);
+  const ah = Math.max(1, availH);
+  let scale = clamp(Math.round(aw / TARGET_W), MIN_SCALE, MAX_SCALE);
+  const derive = (s) => ({
+    width: clamp(snap(aw / s), MIN_W, MAX_W),
+    height: clamp(snap(ah / s), MIN_H, MAX_H),
+  });
+  let { width, height } = derive(scale);
+
+  // Rounding (or the minimum resolution) can overrun the area. Give back a tile
+  // at a time, and only drop a scale step when there are no tiles left to give.
+  while (scale > 1 && (width * scale > aw || height * scale > ah)) {
+    if (width * scale > aw && width - TILE >= MIN_W) width -= TILE;
+    else if (height * scale > ah && height - TILE >= MIN_H) height -= TILE;
+    else {
+      scale -= 1;
+      ({ width, height } = derive(scale));
+    }
+  }
+  return { width, height, scale };
+}
 
 function el(tag, className, html) {
   const node = document.createElement(tag);
@@ -10,36 +64,39 @@ function el(tag, className, html) {
 
 /**
  * @param {HTMLElement} mount
- * @returns {{root:HTMLElement, canvas:HTMLCanvasElement, bind:(sys)=>void}}
+ * @param {{title?:string}} opts
+ * @returns {{
+ *   root: HTMLElement,
+ *   canvas: HTMLCanvasElement,
+ *   size: {width:number, height:number, scale:number},
+ *   bind:(sys:object)=>void,
+ *   onResize:(cb:(size:object)=>void)=>()=>void,
+ * }}
  */
-export function buildShell(mount, { title = 'HANDHELD', tagline = 'DOT MATRIX WITH STEREO SOUND' } = {}) {
+export function buildShell(mount, { title = 'HANDHELD' } = {}) {
   const root = el('div', 'hh');
 
-  const deck = el('div', 'hh-deck');
-  const top = el('div', 'hh-deck-top', `<span>${tagline}</span>`);
-  const power = el('div', 'hh-power', '<i class="hh-led"></i><span>BATTERY</span>');
-  top.appendChild(power);
-
+  // --- screen ---
   const screenBox = el('div', 'hh-screen');
   const canvas = document.createElement('canvas');
-  canvas.setAttribute('aria-label', 'Game screen');
+  canvas.className = 'hh-canvas';
+  canvas.setAttribute('aria-label', `${title} game screen`);
   screenBox.appendChild(canvas);
 
-  const bottom = el('div', 'hh-deck-bottom', `<span>${title}</span>`);
-  deck.append(top, screenBox, bottom);
-
-  const brand = el('div', 'hh-brand', `${title}<small>POCKET</small>`);
-
   // --- controls ---
-  const controls = el('div', 'hh-controls');
+  const pad = el('div', 'hh-pad');
   const dpad = el('div', 'hh-dpad');
-  dpad.appendChild(el('div', 'hh-dpad-dot'));
+  dpad.setAttribute('role', 'group');
+  dpad.setAttribute('aria-label', 'Direction pad');
+  dpad.append(el('i', 'hh-dpad-v'), el('i', 'hh-dpad-h'), el('i', 'hh-dpad-hub'));
 
   const ab = el('div', 'hh-ab');
   const bBtn = el('button', 'hh-btn hh-round', 'B');
   const aBtn = el('button', 'hh-btn hh-round', 'A');
   bBtn.dataset.btn = 'b';
   aBtn.dataset.btn = 'a';
+  bBtn.setAttribute('aria-label', 'B button');
+  aBtn.setAttribute('aria-label', 'A button');
   ab.append(bBtn, aBtn);
 
   const menu = el('div', 'hh-menu');
@@ -49,40 +106,101 @@ export function buildShell(mount, { title = 'HANDHELD', tagline = 'DOT MATRIX WI
   startBtn.dataset.btn = 'start';
   menu.append(selectBtn, startBtn);
 
-  controls.append(dpad, ab, menu);
-
-  const speaker = el('div', 'hh-speaker', '<i></i>'.repeat(6));
-
-  const sys = el('div', 'hh-sys');
-  const lookBtn = el('button', '', 'SCREEN: DMG');
-  const soundBtn = el('button', '', 'SOUND: ON');
+  const sysBar = el('div', 'hh-sys');
+  const lookBtn = el('button', '', 'SCREEN');
+  const soundBtn = el('button', '', 'SOUND');
   const fullBtn = el('button', '', 'FULLSCREEN');
-  sys.append(lookBtn, soundBtn, fullBtn);
+  sysBar.append(lookBtn, soundBtn, fullBtn);
 
-  root.append(deck, brand, controls, speaker, sys);
+  pad.append(dpad, ab, menu, sysBar);
+  root.append(screenBox, pad);
   mount.appendChild(root);
 
-  // --- scaling ---
-  // Integer scale only: a 160x144 grid stretched to a fractional size shimmers.
-  /** Let the screen claim the space the controls do not need. */
-  function layout() {
-    const shellRect = root.getBoundingClientRect();
-    const reserved = controls.getBoundingClientRect().height + brand.getBoundingClientRect().height + sys.getBoundingClientRect().height;
-    const available = Math.max(90, shellRect.height - reserved - 60);
-    const scale = Math.max(1, Math.floor(Math.min((shellRect.width - 48) / canvas.width, available / canvas.height)));
-    canvas.style.width = `${canvas.width * scale}px`;
-    canvas.style.height = `${canvas.height * scale}px`;
+  // --- sizing -------------------------------------------------------------
+  // CSS owns *where* the screen is; this owns what resolution fits in it.
+
+  const listeners = new Set();
+  let bound = null;
+
+  /** The screen area in CSS px (border box minus the bezel border). */
+  function measure() {
+    let w = screenBox.clientWidth;
+    let h = screenBox.clientHeight;
+    if (w < 40 || h < 40) {
+      // Not laid out yet (display:none, detached): estimate from the viewport.
+      w = Math.max(160, window.innerWidth - 12);
+      h = Math.max(144, window.innerHeight / 2 - 12);
+    }
+    return { w, h };
   }
+
+  /** Point the canvas at `next`: backing store, then displayed size. */
+  function applySize(next) {
+    if (canvas.width !== next.width || canvas.height !== next.height) {
+      canvas.width = next.width;
+      canvas.height = next.height;
+    }
+    canvas.style.width = `${next.width * next.scale}px`;
+    canvas.style.height = `${next.height * next.scale}px`;
+    size = next;
+  }
+
+  /** Keep the current framebuffer, just re-fit it at the best integer scale. */
+  function refit(area) {
+    const scale = Math.max(1, Math.floor(Math.min(area.w / size.width, area.h / size.height)));
+    canvas.style.width = `${size.width * scale}px`;
+    canvas.style.height = `${size.height * scale}px`;
+    size = { ...size, scale };
+  }
+
+  const first = measure();
+  let size = pickSize(first.w, first.h);
+  applySize(size);
+
+  function relayout() {
+    const area = measure();
+    const next = pickSize(area.w, area.h);
+    // A console that cannot change resolution keeps the one it booted with;
+    // only the scale is re-fitted so it still sits neatly in the bezel.
+    if (bound && typeof bound.resize !== 'function') {
+      refit(area);
+      return;
+    }
+    const changed = next.width !== size.width || next.height !== size.height;
+    applySize(next);
+    if (changed) for (const cb of listeners) cb({ ...size });
+  }
+
+  let pending = 0;
+  const scheduleLayout = () => {
+    cancelAnimationFrame(pending);
+    pending = requestAnimationFrame(relayout);
+  };
+
+  const ro = new ResizeObserver(scheduleLayout);
+  ro.observe(screenBox);
+  window.addEventListener('resize', scheduleLayout);
+  window.addEventListener('orientationchange', () => setTimeout(scheduleLayout, 150));
 
   return {
     root,
     canvas,
-    elements: { deck, screenBox, dpad, lookBtn, soundBtn, fullBtn, power },
+    get size() {
+      return { ...size };
+    },
+    elements: { screenBox, dpad, ab, menu, lookBtn, soundBtn, fullBtn },
+
+    /** Called with {width, height, scale} whenever the resolution changes. */
+    onResize(cb) {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
 
     /** Connect the shell's controls to a running console. */
-    bind(sys_) {
-      const input = sys_.input;
-      const wake = () => sys_.audio.unlock();
+    bind(sys) {
+      bound = sys;
+      const input = sys.input;
+      const wake = () => sys.audio.unlock();
 
       // --- buttons ---
       const held = new Map(); // pointerId -> button
@@ -158,24 +276,24 @@ export function buildShell(mount, { title = 'HANDHELD', tagline = 'DOT MATRIX WI
 
       // --- system strip ---
       const paintLook = () => {
-        lookBtn.textContent = `SCREEN: ${sys_.look.name}`;
-        const shell = sys_.look.shell || {};
-        root.style.setProperty('--hh-case', shell.case || '#c8c4bc');
-        root.style.setProperty('--hh-screen', shell.screen || '#8b9440');
-        root.style.setProperty('--hh-accent', shell.accent || '#7c1c48');
+        lookBtn.textContent = `SCREEN: ${sys.look.name}`;
+        const look = sys.look.shell || {};
+        root.style.setProperty('--hh-case', look.case || '#c8c4bc');
+        root.style.setProperty('--hh-screen', look.screen || '#8b9440');
+        root.style.setProperty('--hh-accent', look.accent || '#7c1c48');
       };
-      sys_.onLookChange = paintLook;
+      sys.onLookChange = paintLook;
       paintLook();
-      soundBtn.textContent = `SOUND: ${sys_.audio.enabled ? 'ON' : 'OFF'}`;
+      soundBtn.textContent = `SOUND: ${sys.audio.enabled ? 'ON' : 'OFF'}`;
 
       lookBtn.addEventListener('click', () => {
         wake();
-        sys_.cycleLook(1);
+        sys.cycleLook(1);
         paintLook();
       });
       soundBtn.addEventListener('click', () => {
         wake();
-        soundBtn.textContent = `SOUND: ${sys_.toggleSound() ? 'ON' : 'OFF'}`;
+        soundBtn.textContent = `SOUND: ${sys.toggleSound() ? 'ON' : 'OFF'}`;
       });
       fullBtn.addEventListener('click', () => {
         wake();
@@ -183,14 +301,9 @@ export function buildShell(mount, { title = 'HANDHELD', tagline = 'DOT MATRIX WI
         else root.requestFullscreen?.().catch(() => {});
       });
 
-      // --- sizing ---
-      layout();
-      const ro = new ResizeObserver(() => layout());
-      ro.observe(root);
-      window.addEventListener('orientationchange', () => setTimeout(layout, 120));
-      window.addEventListener('resize', layout);
       document.addEventListener('pointerdown', wake, { once: true });
       document.addEventListener('keydown', wake, { once: true });
+      scheduleLayout();
     },
   };
 }
