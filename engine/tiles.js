@@ -153,14 +153,18 @@ const b = new TilesetBuilder();
 // these tiles over *patches* several tiles across (see geo.js), so a field
 // reads as tonal drift rather than as per-tile confetti.
 b.add('grass', '11111111/11111111/11111111/11111111/11111111/11111111/11111111/11111111');
-b.add('grassPale', '01110111/11111111/11011101/11111111/01110111/11111111/11011101/11111111');
-b.add('grassDeep', '21112111/11111111/11211121/11111111/21112111/11111111/11211121/11111111');
-b.add('grassTuft', '11111111/11111111/11121111/11211111/11111111/11111211/11112111/11111111');
+// The two tone tiles deliberately do NOT sit on a lattice: an even dot grid is
+// what reads as machine texture. Scattered at this density they average out to
+// "slightly lighter" and "slightly darker" ground.
+b.add('grassPale', '11111111/10111111/11111111/11101111/11111011/11111111/11011111/11111111');
+b.add('grassDeep', '11111111/12111121/11111111/11121111/21111211/11111111/11211111/11111121');
+b.add('grassTuft', '11111111/11111111/11221111/11111111/11111111/11112211/11111111/11111111');
 
-// Mown lawn: broad alternating stripes, the way a groundsman leaves it.
+// Mown lawn: broad alternating stripes, the way a groundsman leaves it. The
+// stripe is drawn as fine horizontal lines rather than dots, so it reads as a
+// direction of cut instead of as noise.
 b.add('lawn', '00000000/00000000/00000000/00000000/00000000/00000000/00000000/00000000');
-b.add('lawnStripe', '10101010/00000000/10101010/00000000/10101010/00000000/10101010/00000000');
-b.add('lawnEdge', '00000000/00000000/00000000/00000000/00000000/00000000/00000000/11111111');
+b.add('lawnStripe', '11111111/00000000/11111111/00000000/11111111/00000000/11111111/00000000');
 
 b.add('meadow', '11111111/11111111/11121111/11111111/11111111/11112111/11111111/11111111');
 b.add('meadowFlower', '11111111/11011111/11111111/11111011/11111111/10111111/11111111/11111101');
@@ -169,8 +173,14 @@ b.add('sand', '11111111/11111111/11011111/11111111/11111111/11111101/11111111/11
 b.add('marsh', '11111111/11311131/11111111/13111311/11111111/11311131/11111111/13111311');
 
 // --- water ----------------------------------------------------------------
+// Same trick as the ground: open water is mostly calm, and ripples come in
+// patches several tiles across rather than on every tile.
 b.addWithEdges('water', '22222222/23322222/22222222/22222222/22222332/22222222/23322222/22222222', foam);
+b.add('waterCalm', '22222222/22222222/22222222/22222222/22222222/22222222/22222222/22222222');
+b.add('waterRipple', '22222222/23322222/22222222/22222332/22222222/22222222/23322222/22222222');
 b.addWithEdges('waterDeep', '33333333/33333333/32233333/33333333/33333333/33333322/33333333/33333333', foam);
+b.add('deepCalm', '33333333/33333333/33333333/33333333/33333333/33333333/33333333/33333333');
+b.add('deepRipple', '33333333/33333333/32233333/33333333/33333333/33333322/33333333/33333333');
 
 // --- built surfaces -------------------------------------------------------
 b.addWithEdges('path', '00000000/00000000/00000000/00000000/00000000/00000000/00000000/00000000', kerb);
@@ -183,7 +193,7 @@ b.add('parking', '22222222/22222222/22222222/22222222/22222222/22222222/22222222
 b.add('parkingLine', '00222222/00222222/00222222/00222222/00222222/00222222/22222222/22222222');
 b.add('rail', '22222222/33333333/22222222/20202020/22222222/33333333/22222222/22222222');
 b.add('pitch', '11111111/11111111/11111111/11111111/11111111/11111111/11111111/11111111');
-b.add('pitchStripe', '11211121/11111111/11211121/11111111/11211121/11111111/11211121/11111111');
+b.add('pitchStripe', '22222222/11111111/11111111/11111111/22222222/11111111/11111111/11111111');
 b.add('pitchLine', '11111111/11111111/11111111/00000000/11111111/11111111/11111111/11111111');
 b.add('steps', '00000000/22222222/00000000/22222222/00000000/22222222/00000000/22222222');
 
@@ -193,13 +203,18 @@ b.add('steps', '00000000/22222222/00000000/22222222/00000000/22222222/00000000/2
 // facade below, not from a texture. `roofWeather` and the rooftop plant give
 // large footprints something to look at without turning into wallpaper.
 b.addWithEdges('roof', '11111111/11111111/11111111/11111111/11111111/11111111/11111111/11111111', roofRim);
-b.addWithEdges('roofWeather', '11111111/11111111/11211121/11111111/11111111/12111211/11111111/11111111', roofRim);
+b.addWithEdges('roofPale', '11111111/10111111/11111111/11101111/11111011/11111111/11011111/11111111', roofRim);
+b.addWithEdges('roofWeather', '11111111/12111121/11111111/11121111/21111211/11111111/11211111/11111121', roofRim);
 // The roof course that sits directly on top of a facade: its lower rows fall
 // into the eaves shadow, so the wall below reads as being in front of it.
 b.addWithEdges('roofEave', '11111111/11111111/11111111/11111111/11111111/11111111/22222222/22222222', roofRim);
-b.add('roofPlant', '11111111/12222211/12000211/12000211/12000211/12222211/13333311/11111111');
-b.add('roofLight', '11111111/11111111/11122111/11122111/11111111/11111111/11111111/11111111');
-b.add('roofVent', '11111111/11111111/11222111/12000211/12000211/13333311/11111111/11111111');
+// ...and where a taller range stands behind it, it lies in that range's shadow.
+b.addWithEdges('roofBack', '22222222/22222222/11111111/11111111/11111111/11111111/11111111/11111111', roofRim);
+// Rooftop plant. A handful of these do more for a 25x20 roof than any amount
+// of repeating texture, because they are things rather than pattern.
+b.add('roofPlant', '11111111/12222231/12111231/12111231/12222231/13333331/11111111/11111111');
+b.add('roofLight', '11111111/11111111/12222311/12002311/12002311/12222311/13333311/11111111');
+b.add('roofVent', '11111111/11111111/11222311/11202311/11222311/11333311/11111111/11111111');
 
 // Facades. Storeys stack on an 8px rhythm: `wallHi` carries the eaves shadow,
 // `wallLo` the line where the wall meets the ground.
@@ -221,7 +236,9 @@ b.add('crown1', '.01111../011111.3/0111213./01122123/02222233/.322333./..333.../
 b.add('crown2', '......../..0110../.011113./01122113/02122233/.222333./..333.../........');
 b.add('bush', '......../..0110../.011113./.012213./.222233./..3333../......../........');
 b.add('hedge', '00000000/12211221/21122112/12211221/21122112/12211221/21122112/33333333');
-b.add('fence', '......../......../33333333/3......3/......../......../......../........');
+// Opaque on purpose: every base tile has to cover its cell, or the framebuffer
+// keeps whatever was behind it and the fence line renders as a black block.
+b.add('fence', '11111111/11111111/33333333/31111113/11111111/11111111/11111111/11111111');
 
 // --- shadow overlays ------------------------------------------------------
 //
@@ -230,10 +247,16 @@ b.add('fence', '......../......../33333333/3......3/......../......../......../.
 // on and stays visible on the monochrome looks too. Density fades away from the
 // caster, which is what makes an ordered dither read as a soft edge rather than
 // as a pattern.
-b.add('shadowN', '333.333./.333.333/3.3.3.3./.3.3.3.3/3...3.../..3...3./......../........');
-b.add('shadowW', '333.3.../3..3..../333..3../.3.3..../333.3.../3..3..../333..3../.3.3....');
-b.add('shadowNW', '333.333./3333.333/333.3.3./.3.3.3.3/333.3.../3.3...3./333..3../.3.3....');
-b.add('shadowDiag', '33.3..../3.3...../.3....../3......./......../......../......../........');
+b.add('shadowN', '222.222./.222.222/2.2.2.2./.2.2.2.2/2...2.../..2...2./......../........');
+b.add('shadowW', '222.2.../2..2..../222..2../.2.2..../222.2.../2..2..../222..2../.2.2....');
+b.add('shadowNW', '222.222./2222.222/222.222./.2.2.2.2/222.2.../2.22..2./222..2../.2.2....');
+b.add('shadowDiag', '22.2..../2.2...../.2....../2......./......../......../......../........');
+// The same four again one shade darker, for ground that is already dark enough
+// that shade 2 would vanish into it - tarmac, water, ploughed earth.
+b.add('shadowNDark', '333.333./.333.333/3.3.3.3./.3.3.3.3/3...3.../..3...3./......../........');
+b.add('shadowWDark', '333.3.../3..3..../333..3../.3.3..../333.3.../3..3..../333..3../.3.3....');
+b.add('shadowNWDark', '333.333./3333.333/333.333./.3.3.3.3/333.3.../3.33..3./333..3../.3.3....');
+b.add('shadowDiagDark', '33.3..../3.3...../.3....../3......./......../......../......../........');
 
 export const TILESET = b.build();
 export const T = TILESET.id;
