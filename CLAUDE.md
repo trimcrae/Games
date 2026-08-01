@@ -75,6 +75,50 @@ GitHub Pages publishes. Do not sit on finished work waiting for permission.
 load-bearing: it once passed a build where Stanford's spawn was sealed inside a
 52-tile pocket.
 
+## Making the engine reusable: what is left
+
+Building a second and third cartridge was used to test whether the engine is
+genuinely general. It is, in the parts that matter — the framebuffer, palettes,
+scene contract, map compiler, camera, audio and saves all took a completely
+different game with no changes. What it exposed is that several things that
+should be *platform* are still sitting inside the Explorer *cartridge*. Two are
+fixed (`map.places`, and `walkField`/`reachable` in `engine/geo.js`); these are
+not, in rough order of value:
+
+1. **The three places live in `games/explorer/levels.js`.** Bboxes, scales,
+   spawn points. Lift into `games/places.js` and let Explorer layer its
+   landmarks, racks and hubs on top. Not finished by moving the table alone:
+   Courier also imports `PLAYER`/`BIKE` from `games/explorer/sprites.js`, so the
+   shared walker and bicycle need a neutral home too.
+2. **Movement is welded to `WorldScene`** — `blocked`, `step`, `walk`, `ride`,
+   `paved`, `MAX_STEP` — so Courier carries a parallel `Rider`, and the
+   load-bearing invariant (*substep to at most 3px because the feet box is 7px
+   on 8px tiles*) is written down in two places where it can drift. **If you
+   extract a `Body`, note that `tools/playtest.mjs` and `tools/browser-check.mjs`
+   both write `world.x`/`y`/`speed` directly, so `WorldScene` needs delegating
+   accessors or both harnesses break.**
+3. **A cartridge cannot return to the launcher.** `LauncherScene` needs the
+   manifest, which imports the cartridge. There is no `sys.exitToLauncher()`, so
+   the only way out of a game is to reload the page. A console should eject.
+4. **`resized(w, h, sys)` only fires on a change, never on push**, and `enter`
+   is not given the screen, so every scene that caches layout carries a
+   defensive re-derive guard. Explorer does it three times.
+5. `LoadingScene` is private to Explorer and every map cartridge needs one —
+   promote **Courier's** copy, which is responsive; Explorer's hardcodes screen
+   coordinates. `sprite()`/`opSprite()` belong in `engine/art.js`; `RIDE_SFX`
+   beside `SFX`; a `defaultMinimapPalette` in `engine/tilemap.js`; a seeded RNG
+   in the engine rather than copy-pasted per cartridge.
+6. **`LauncherScene` draws its 64x48 icon over its own subtitle at 160x128** and
+   clamping the scale alone will not fix it — the box is 42px tall and
+   `fitScale` floors at 1, so the art has to be clipped as `LandmarkScene`
+   already does, or the launcher must give it more room at short resolutions.
+
+One deliberate non-change worth knowing: passing a reach field to `nearestOpen`
+in Courier's `findDepots` would find valid doors for 38 more buildings (31
+Stanford, 4 RIT, 3 Greece), all genuinely deliverable-to. It is strictly better
+but it changes which jobs the dispatcher hands out, so it is a content decision,
+not a refactor. The call site says so.
+
 ## Look and art decisions (settled)
 
 - Default screen is **colour**, targeting Game Boy Advance-level colour depth
