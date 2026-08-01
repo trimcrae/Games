@@ -536,8 +536,10 @@ export function compileMap(def) {
 //
 // The walkable graph is a four-connected flood over open tiles. Both halves of
 // that are load-bearing:
-//   - the body's feet box fits inside one tile (see engine/body.js), so "can
-//     stand centred on this tile" is exactly "this tile is open";
+//   - the walker's feet box is seven pixels square, the largest that fits
+//     inside one eight-pixel tile, so "can stand centred on this tile" is
+//     exactly "this tile is open". tools/playtest.mjs proves that claim against
+//     the game's own collision code on every tile of every map;
 //   - a move is resolved one axis at a time, so a diagonal squeeze between two
 //     solid tiles is not a legal route and diagonals are left out.
 

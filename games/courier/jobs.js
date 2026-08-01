@@ -9,7 +9,7 @@
 // job is only ever offered between two addresses that are genuinely joined.
 
 import { TILE } from '../../engine/tiles.js';
-import { walkField } from './world.js';
+import { walkField } from '../../engine/geo.js';
 
 /**
  * The ladder. `at` is deliveries completed; a run's rank is the last one
